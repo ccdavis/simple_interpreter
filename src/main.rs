@@ -16,6 +16,17 @@ pub enum Op {
     Mul,
     Div,
 }
+
+#[derive(Debug, Clone)]
+pub enum BoolOp {
+    Gt,
+    Lt,
+    Ne,
+    Eq,
+    Lte,
+    Gte,
+}
+
 #[derive(Debug, Clone)]
 pub enum LangType {
     Integer,
@@ -23,6 +34,27 @@ pub enum LangType {
     String,
     Boolean,
     Named(String),
+}
+
+impl LangType {
+    pub fn scalar(&self) -> bool {
+        match self {
+            LangType::Integer | LangType::Float => true,
+            _ => false,
+        }
+    }
+
+    pub fn comparable(lhs_t: LangType, rhs_t: LangType) -> bool {
+        if lhs_t.scalar() && rhs_t.scalar() {
+            return true;
+        }
+
+        match (lhs_t, rhs_t) {
+            (LangType::Boolean, LangType::Boolean) => true,
+            (LangType::String, LangType::String) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -37,6 +69,7 @@ pub enum TokenValue {
 
     // Any data operations
     Operator(Op),
+    BoolOperator(BoolOp),
 
     // Keywords
     Output,
@@ -76,6 +109,7 @@ impl Token {
 #[derive(Debug)]
 pub enum Expr {
     Binary(Op, ExprRef, ExprRef),
+    Compare(BoolOp, ExprRef, ExprRef),
     Output(ExprRef),
     If(ExprRef, ExprRef, ExprRef),
     Let(ExprRef, ExprRef, LangType), // name, value,type
@@ -121,6 +155,17 @@ impl ExpressionPool {
         let idx = self.exprs.len();
         self.exprs.push(expr);
         ExprRef(idx.try_into().expect("too many exprs in the pool"))
+    }
+
+    pub fn last_exprref(&self) -> ExprRef {
+        ExprRef((self.size() - 1).try_into().expect("Can't get ExprRef"))
+    }
+
+    pub fn last_two_exprref(&self) -> (ExprRef, ExprRef) {
+        (
+            ExprRef((self.size() - 2).try_into().expect("Can't get ExprRef")),
+            ExprRef((self.size() - 1).try_into().expect("Can't get ExprRef")),
+        )
     }
 }
 
@@ -253,6 +298,10 @@ pub mod parser {
             );
         }
 
+        fn next_token(&self) -> Token {
+            self.source.peek().clone()
+        }
+
         pub fn new(code: Vec<Token>) -> Self {
             Self {
                 source: ParserState::new(code),
@@ -269,11 +318,80 @@ pub mod parser {
         }
 
         fn expression(&mut self) -> LangType {
+            let expression_type = self.simple_expression();
+            let look_ahead = self.next_token();
+            if let TokenValue::BoolOperator(bool_op) = look_ahead.value().clone() {
+                self.source.advance();
+                let rhs_expression_type = self.simple_expression();
+
+                // Some basic type checking
+                if !LangType::comparable(expression_type, rhs_expression_type) {
+                    let message = format!("Can't compare arguments to '{:?}'", look_ahead.value());
+                    self.print_error(&message, &look_ahead);
+                    std::process::exit(1);
+                }
+
+                let (lhs, rhs) = self.target.last_two_exprref();
+
+                self.target.add(Expr::Compare(bool_op, lhs, rhs));
+                LangType::Boolean
+            } else {
+                expression_type
+            }
+        }
+
+        fn simple_expression(&mut self) -> LangType {
+            // A leading '-' is possible. We set the leading operator to '+' by default.
+            let mut leading_op = Op::Add;
+            let look_ahead = self.next_token();
+            if let TokenValue::Operator(op) = look_ahead.value().clone() {
+                match op {
+                    Op::Sub => leading_op = op,
+                    _ => self.print_error(
+                        &format!("Unexpected operator '{:?}', ignoring.", op),
+                        &look_ahead,
+                    ),
+                }
+
+                self.source.advance();
+            }
+
+            let lhs_type = self.term();
+            if matches!(leading_op, Op::Sub) {
+                // Insert a -1
+                self.target.add(Expr::LiteralInt(-1));
+                let (value, negator) = self.target.last_two_exprref();
+                self.target.add(Expr::Binary(Op::Mul, negator, value));
+            }
+            let rhs_type = self.simple_part();
+            if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
+                LangType::Float
+            } else {
+                LangType::Integer
+            }
+        }
+
+        fn term(&mut self) -> LangType {
+            let lhs_type = self.factor();
+            // Multiply by the term part
+            let rhs_type = self.term_part();
+            if matches!(lhs_type, LangType::Float) || matches!(rhs_type, LangType::Float) {
+                LangType::Float
+            } else {
+                LangType::Integer
+            }
+        }
+
+        fn term_part(&mut self) -> LangType {
+            LangType::Integer
+        }
+
+        fn simple_part(&mut self) -> LangType {
             LangType::Integer
         }
 
         fn factor(&mut self) -> LangType {
-            let look_ahead = self.source.peek().clone();
+            let look_ahead = self.next_token();
             let data_type = match look_ahead.value() {
                 TokenValue::Float(f) => {
                     self.target.add(Expr::LiteralFloat(*f));

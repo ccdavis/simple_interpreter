@@ -17,8 +17,19 @@ pub enum Op {
     Div,
 }
 
+impl Op {
+    // Convenience for deciding on classes of operators, mainly for determining precedence.
+    pub fn is_mul_op(&self) -> bool {
+        matches!(*self, Self::Mul) || matches!(*self, Self::Div)
+    }
+
+    pub fn is_add_op(&self) -> bool {
+        matches!(*self, Self::Add) || matches!(*self, Self::Sub)
+    }
+}
+
 #[derive(Debug, Clone)]
-pub enum BoolOp {
+pub enum CompareOp {
     Gt,
     Lt,
     Ne,
@@ -33,7 +44,11 @@ pub enum LangType {
     Float,
     String,
     Boolean,
-    Named(String),
+    Named {
+        name: String,
+        parent: Option<Box<LangType>>,
+    },
+    Unit,
 }
 
 impl LangType {
@@ -69,7 +84,7 @@ pub enum TokenValue {
 
     // Any data operations
     Operator(Op),
-    BoolOperator(BoolOp),
+    CompareOperator(CompareOp),
 
     // Keywords
     Output,
@@ -85,6 +100,9 @@ pub enum TokenValue {
     RightParen,
     EqualSign,
     SemiColon,
+    Comma,
+    LeftBrace,
+    RightBrace,
     Eof,
 }
 
@@ -104,12 +122,33 @@ impl Token {
         // Only compare varients, not content of enums
         std::mem::discriminant(self.value()) == std::mem::discriminant(t)
     }
+
+    pub fn is_mul_op(&self) -> bool {
+        match self.value() {
+            TokenValue::Operator(op) => op.is_mul_op(),
+            _ => false,
+        }
+    }
+
+    pub fn is_add_op(&self) -> bool {
+        match self.value() {
+            TokenValue::Operator(op) => op.is_add_op(),
+            _ => false,
+        }
+    }
+
+    pub fn is_compare_op(&self) -> bool {
+        match self.value() {
+            TokenValue::CompareOperator(_) => true,
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug)]
 pub enum Expr {
     Binary(Op, ExprRef, ExprRef),
-    Compare(BoolOp, ExprRef, ExprRef),
+    Compare(CompareOp, ExprRef, ExprRef),
     Output(ExprRef),
     If(ExprRef, ExprRef, ExprRef),
     Let(ExprRef, ExprRef, LangType), // name, value,type
@@ -317,10 +356,66 @@ pub mod parser {
             Some(&self.target)
         }
 
+        // I'm going to convert these statements into expression-statements.
+
+        fn statement_list(&mut self) -> LangType {
+            let stmt_type = self.statement();
+            let mut look_ahead = self.next_token();
+            while !matches!(look_ahead.value(), TokenValue::RightBrace)
+                && !matches!(look_ahead.value(), TokenValue::Else)
+            {
+                self.statement();
+                look_ahead = self.next_token();
+            }
+
+            LangType::Unit
+        }
+
+        fn statement(&mut self) -> LangType {
+            let look_ahead = self.next_token();
+            match look_ahead.value() {
+                TokenValue::If => {
+                    self.source.advance();
+                    self.source.matches(&[TokenValue::LeftParen]);
+                    let et = self.expression();
+                    if !matches!(et, LangType::Boolean) {
+                        self.print_error(
+                            "Must use a boolean type of expression in an if-statement.",
+                            &look_ahead,
+                        );
+                        std::process::exit(1);
+                    }
+                    self.source.matches(&[TokenValue::RightParen]);
+                    self.source.matches(&[TokenValue::LeftBrace]);
+                    self.statement_list();
+                    self.source.matches(&[TokenValue::RightBrace]);
+                    if matches!(self.next_token().value(), TokenValue::Else) {
+                        self.source.advance();
+                        self.source.matches(&[TokenValue::LeftBrace]);
+                        self.statement_list();
+                        self.source.matches(&[TokenValue::RightBrace]);
+                    }
+                }
+                _ => panic!("Not implemented!"),
+            }
+            self.source.matches(&[TokenValue::SemiColon]);
+
+            LangType::Unit
+        }
+
+        fn expression_list(&mut self) -> LangType {
+            let mut expr_type = self.expression();
+            while let TokenValue::Comma = self.next_token().value() {
+                self.source.matches(&[TokenValue::Comma]);
+                expr_type = self.expression();
+            }
+            expr_type
+        }
+
         fn expression(&mut self) -> LangType {
             let expression_type = self.simple_expression();
             let look_ahead = self.next_token();
-            if let TokenValue::BoolOperator(bool_op) = look_ahead.value().clone() {
+            if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
                 self.source.advance();
                 let rhs_expression_type = self.simple_expression();
 
@@ -332,7 +427,6 @@ pub mod parser {
                 }
 
                 let (lhs, rhs) = self.target.last_two_exprref();
-
                 self.target.add(Expr::Compare(bool_op, lhs, rhs));
                 LangType::Boolean
             } else {
@@ -344,15 +438,12 @@ pub mod parser {
             // A leading '-' is possible. We set the leading operator to '+' by default.
             let mut leading_op = Op::Add;
             let look_ahead = self.next_token();
-            if let TokenValue::Operator(op) = look_ahead.value().clone() {
-                match op {
-                    Op::Sub => leading_op = op,
-                    _ => self.print_error(
-                        &format!("Unexpected operator '{:?}', ignoring.", op),
-                        &look_ahead,
-                    ),
+            if look_ahead.is_add_op() {
+                if let TokenValue::Operator(ref op) = look_ahead.value() {
+                    if matches!(op, Op::Sub) {
+                        leading_op = Op::Sub;
+                    }
                 }
-
                 self.source.advance();
             }
 
@@ -383,13 +474,61 @@ pub mod parser {
         }
 
         fn term_part(&mut self) -> LangType {
-            LangType::Integer
+            let look_ahead = self.next_token();
+            if look_ahead.is_mul_op() {
+                let op = if let TokenValue::Operator(mul_op) = look_ahead.value() {
+                    mul_op
+                } else {
+                    panic!("Internal error.");
+                };
+                self.source.advance();
+
+                // Parse the right-hand side and get the type of the argument to 'op'
+                let rhs_type = self.factor();
+
+                let (lhs, rhs) = self.target.last_two_exprref();
+                self.target.add(Expr::Binary(op.clone(), lhs, rhs));
+                let next_part_type = self.term_part();
+
+                if matches!(rhs_type, LangType::Float) || matches!(next_part_type, LangType::Float)
+                {
+                    LangType::Float
+                } else {
+                    LangType::Integer
+                }
+            } else {
+                LangType::Integer
+            }
         }
 
         fn simple_part(&mut self) -> LangType {
-            LangType::Integer
+            let look_ahead = self.next_token();
+            if look_ahead.is_add_op() {
+                if let TokenValue::Operator(ref op) = look_ahead.value() {
+                    self.source.advance();
+                    let term_type = self.term();
+                    let (lhs, rhs) = self.target.last_two_exprref();
+                    self.target.add(Expr::Binary(op.clone(), lhs, rhs));
+
+                    let next_part_type = self.simple_part();
+                    if matches!(next_part_type, LangType::Float)
+                        || matches!(term_type, LangType::Float)
+                    {
+                        LangType::Float
+                    } else {
+                        LangType::Integer
+                    }
+                } else {
+                    panic!(
+                        "Internal error. No 'add' operator should not match the Operator variant."
+                    );
+                }
+            } else {
+                LangType::Integer
+            }
         }
 
+        // AKA "Primary expressions"
         fn factor(&mut self) -> LangType {
             let look_ahead = self.next_token();
             let data_type = match look_ahead.value() {

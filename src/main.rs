@@ -70,6 +70,21 @@ impl LangType {
             _ => false,
         }
     }
+
+    // Exact type match including user defined types
+    pub fn same_as(&self, other: &Self) -> bool {
+        if let (LangType::Named { name: name1, .. }, LangType::Named { name: name2, .. }) =
+            (self, other)
+        {
+            name1 == name2
+        } else {
+            self.same_major_type_as(other)
+        }
+    }
+
+    pub fn same_major_type_as(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -150,7 +165,9 @@ pub enum Expr {
     Binary(Op, ExprRef, ExprRef),
     Compare(CompareOp, ExprRef, ExprRef),
     Output(ExprRef),
-    If(ExprRef, ExprRef, ExprRef),
+    // To interpret or compile 'If' remember to increment the then_addr by 1and jump there
+    // to keep evaluating and return from else_addr.
+    If(ExprRef, ExprRef, Option<ExprRef>),
     Let(ExprRef, ExprRef, LangType), // name, value,type
     Assign(ExprRef, ExprRef),
     Call(ExprRef), // anything labeled in the source with a name
@@ -319,6 +336,9 @@ pub mod parser {
         }
     }
 
+    pub type CompileResult = (ExprRef, LangType);
+
+    // Translates from source to target
     pub struct LanguageParser {
         source: ParserState,
         target: ExpressionPool,
@@ -352,32 +372,31 @@ pub mod parser {
 
         // The grammar specific logic ---------------------
         pub fn parse_program(&mut self) -> Option<&ExpressionPool> {
-            self.factor();
+            self.statement_list();
             Some(&self.target)
         }
 
         // I'm going to convert these statements into expression-statements.
 
-        fn statement_list(&mut self) -> LangType {
-            let stmt_type = self.statement();
+        fn statement_list(&mut self) -> CompileResult {
+            let (mut stmt_addr, mut stmt_type) = self.statement();
             let mut look_ahead = self.next_token();
             while !matches!(look_ahead.value(), TokenValue::RightBrace)
                 && !matches!(look_ahead.value(), TokenValue::Else)
             {
-                self.statement();
+                (stmt_addr, stmt_type) = self.statement();
                 look_ahead = self.next_token();
             }
-
-            LangType::Unit
+            (stmt_addr, stmt_type)
         }
 
-        fn statement(&mut self) -> LangType {
+        fn statement(&mut self) -> CompileResult {
             let look_ahead = self.next_token();
-            match look_ahead.value() {
+            let (stmt_addr, stmt_type) = match look_ahead.value() {
                 TokenValue::If => {
                     self.source.advance();
                     self.source.matches(&[TokenValue::LeftParen]);
-                    let et = self.expression();
+                    let (cond_addr, et) = self.expression();
                     if !matches!(et, LangType::Boolean) {
                         self.print_error(
                             "Must use a boolean type of expression in an if-statement.",
@@ -387,37 +406,51 @@ pub mod parser {
                     }
                     self.source.matches(&[TokenValue::RightParen]);
                     self.source.matches(&[TokenValue::LeftBrace]);
-                    self.statement_list();
+                    let (then_addr, then_type) = self.statement_list();
                     self.source.matches(&[TokenValue::RightBrace]);
-                    if matches!(self.next_token().value(), TokenValue::Else) {
+                    let if_addr = if matches!(self.next_token().value(), TokenValue::Else) {
                         self.source.advance();
                         self.source.matches(&[TokenValue::LeftBrace]);
-                        self.statement_list();
+                        let (else_addr, else_type) = self.statement_list();
                         self.source.matches(&[TokenValue::RightBrace]);
-                    }
+                        if then_type.same_as(&else_type) {
+                            self.target
+                                .add(Expr::If(cond_addr, then_addr, Some(else_addr)))
+                        } else {
+                            let msg = format!(
+                                "Type mismatch between 'if' branches: THEN = '{:?}' ELSE = '{:?}'",
+                                &then_type, &else_type
+                            );
+                            self.print_error(&msg, &look_ahead);
+                            std::process::exit(1);
+                        }
+                    } else {
+                        self.target.add(Expr::If(cond_addr, then_addr, None))
+                    };
+                    (if_addr, then_type)
                 }
                 _ => panic!("Not implemented!"),
-            }
+            };
             self.source.matches(&[TokenValue::SemiColon]);
 
-            LangType::Unit
+            (stmt_addr, stmt_type)
         }
 
-        fn expression_list(&mut self) -> LangType {
-            let mut expr_type = self.expression();
+        fn expression_list(&mut self) {
+            let (_, _) = self.expression();
             while let TokenValue::Comma = self.next_token().value() {
                 self.source.matches(&[TokenValue::Comma]);
-                expr_type = self.expression();
+                let (_, _) = self.expression();
             }
-            expr_type
+            // The address of the first expression or any of the types aren't needed anywhere
         }
 
-        fn expression(&mut self) -> LangType {
-            let expression_type = self.simple_expression();
+        fn expression(&mut self) -> CompileResult {
+            let (lhs_addr, expression_type) = self.simple_expression();
             let look_ahead = self.next_token();
             if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
                 self.source.advance();
-                let rhs_expression_type = self.simple_expression();
+                let (rhs_addr, rhs_expression_type) = self.simple_expression();
 
                 // Some basic type checking
                 if !LangType::comparable(expression_type, rhs_expression_type) {
@@ -426,15 +459,14 @@ pub mod parser {
                     std::process::exit(1);
                 }
 
-                let (lhs, rhs) = self.target.last_two_exprref();
-                self.target.add(Expr::Compare(bool_op, lhs, rhs));
-                LangType::Boolean
+                let this_address = self.target.add(Expr::Compare(bool_op, lhs_addr, rhs_addr));
+                (this_address, LangType::Boolean)
             } else {
-                expression_type
+                (lhs_addr, expression_type)
             }
         }
 
-        fn simple_expression(&mut self) -> LangType {
+        fn simple_expression(&mut self) -> CompileResult {
             // A leading '-' is possible. We set the leading operator to '+' by default.
             let mut leading_op = Op::Add;
             let look_ahead = self.next_token();
@@ -447,33 +479,42 @@ pub mod parser {
                 self.source.advance();
             }
 
-            let lhs_type = self.term();
+            let (lhs_addr, lhs_type) = self.term();
             if matches!(leading_op, Op::Sub) {
                 // Insert a -1
-                self.target.add(Expr::LiteralInt(-1));
-                let (value, negator) = self.target.last_two_exprref();
-                self.target.add(Expr::Binary(Op::Mul, negator, value));
-            }
-            let rhs_type = self.simple_part();
-            if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
-                LangType::Float
+                let negator_addr = self.target.add(Expr::LiteralInt(-1));
+                self.target
+                    .add(Expr::Binary(Op::Mul, negator_addr, lhs_addr));
+                let (rhs_addr, rhs_type) = self.simple_part();
+                if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
+                    (negator_addr, LangType::Float)
+                } else {
+                    (negator_addr, LangType::Integer)
+                }
             } else {
-                LangType::Integer
+                let (rhs_addr, rhs_type) = self.simple_part();
+                if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
+                    (lhs_addr, LangType::Float)
+                } else {
+                    (lhs_addr, LangType::Integer)
+                }
             }
         }
 
-        fn term(&mut self) -> LangType {
-            let lhs_type = self.factor();
+        fn term(&mut self) -> CompileResult {
+            let (lhs_addr, lhs_type) = self.factor();
             // Multiply by the term part
-            let rhs_type = self.term_part();
+            let (rhs_addr, rhs_type) = self.term_part();
+
             if matches!(lhs_type, LangType::Float) || matches!(rhs_type, LangType::Float) {
-                LangType::Float
+                (rhs_addr, LangType::Float)
             } else {
-                LangType::Integer
+                (rhs_addr, LangType::Integer)
             }
         }
 
-        fn term_part(&mut self) -> LangType {
+        fn term_part(&mut self) -> CompileResult {
+            let lhs_addr = self.target.last_exprref();
             let look_ahead = self.next_token();
             if look_ahead.is_mul_op() {
                 let op = if let TokenValue::Operator(mul_op) = look_ahead.value() {
@@ -484,39 +525,39 @@ pub mod parser {
                 self.source.advance();
 
                 // Parse the right-hand side and get the type of the argument to 'op'
-                let rhs_type = self.factor();
-
-                let (lhs, rhs) = self.target.last_two_exprref();
-                self.target.add(Expr::Binary(op.clone(), lhs, rhs));
-                let next_part_type = self.term_part();
-
+                let (rhs_addr, rhs_type) = self.factor();
+                let mul_op_addr = self
+                    .target
+                    .add(Expr::Binary(op.clone(), lhs_addr, rhs_addr));
+                let (next_part_addr, next_part_type) = self.term_part();
                 if matches!(rhs_type, LangType::Float) || matches!(next_part_type, LangType::Float)
                 {
-                    LangType::Float
+                    (next_part_addr, LangType::Float)
                 } else {
-                    LangType::Integer
+                    (next_part_addr, LangType::Integer)
                 }
             } else {
-                LangType::Integer
+                (lhs_addr, LangType::Integer)
             }
         }
 
-        fn simple_part(&mut self) -> LangType {
+        fn simple_part(&mut self) -> CompileResult {
+            let lhs_addr = self.target.last_exprref();
             let look_ahead = self.next_token();
             if look_ahead.is_add_op() {
                 if let TokenValue::Operator(ref op) = look_ahead.value() {
                     self.source.advance();
-                    let term_type = self.term();
-                    let (lhs, rhs) = self.target.last_two_exprref();
-                    self.target.add(Expr::Binary(op.clone(), lhs, rhs));
+                    let (rhs_addr, rhs_type) = self.term();
+                    self.target
+                        .add(Expr::Binary(op.clone(), lhs_addr, rhs_addr));
 
-                    let next_part_type = self.simple_part();
+                    let (next_part_addr, next_part_type) = self.simple_part();
                     if matches!(next_part_type, LangType::Float)
-                        || matches!(term_type, LangType::Float)
+                        || matches!(rhs_type, LangType::Float)
                     {
-                        LangType::Float
+                        (next_part_addr, LangType::Float)
                     } else {
-                        LangType::Integer
+                        (next_part_addr, LangType::Integer)
                     }
                 } else {
                     panic!(
@@ -524,45 +565,43 @@ pub mod parser {
                     );
                 }
             } else {
-                LangType::Integer
+                (lhs_addr, LangType::Integer)
             }
         }
 
         // AKA "Primary expressions"
-        fn factor(&mut self) -> LangType {
+        fn factor(&mut self) -> CompileResult {
             let look_ahead = self.next_token();
             let data_type = match look_ahead.value() {
                 TokenValue::Float(f) => {
-                    self.target.add(Expr::LiteralFloat(*f));
-
+                    let expr_addr = self.target.add(Expr::LiteralFloat(*f));
                     self.source.advance();
-                    LangType::Float
+                    (expr_addr, LangType::Float)
                 }
                 TokenValue::Integer(i) => {
-                    self.target.add(Expr::LiteralInt(*i));
-
+                    let expr_addr = self.target.add(Expr::LiteralInt(*i));
                     self.source.advance();
-                    LangType::Integer
+                    (expr_addr, LangType::Integer)
                 }
                 TokenValue::Str(s) => {
-                    self.target.add(Expr::LiteralString(s.clone()));
-
+                    let expr_addr = self.target.add(Expr::LiteralString(s.clone()));
                     self.source.advance();
-                    LangType::String
+                    (expr_addr, LangType::String)
                 }
                 TokenValue::Ident(name) => {
                     let ste = self.symbols.get(self.current_frame, name).clone();
                     if let Some(value_storage) = ste {
-                        self.target.add(Expr::Call(*value_storage));
+                        let call_addr = self.target.add(Expr::Call(*value_storage));
                         self.source.advance();
 
                         // get type of the referenced value
                         let orig_expr: &Expr = self.target.get(*value_storage);
-                        if let Expr::Let(_, _, data_type) = orig_expr {
+                        let call_type = if let Expr::Let(_, _, data_type) = orig_expr {
                             data_type.clone()
                         } else {
                             panic!("Internal parser error. A call to '{}' has a reference to  something other than a 'let' statement.", &name );
-                        }
+                        };
+                        (call_addr, call_type)
                     } else {
                         let msg = format!("Undeclared identifier '{}'", name);
                         self.print_error(&msg, &look_ahead);
@@ -571,9 +610,9 @@ pub mod parser {
                 }
                 TokenValue::LeftParen => {
                     self.source.advance();
-                    let expression_type = self.expression();
+                    let (expression_addr, expression_type) = self.expression();
                     if self.source.matches(&[TokenValue::RightParen]) {
-                        expression_type
+                        (expression_addr, expression_type)
                     } else {
                         self.print_error("Expected ')'", &look_ahead);
                         std::process::exit(1);

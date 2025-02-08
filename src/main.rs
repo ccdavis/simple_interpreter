@@ -164,11 +164,12 @@ impl Token {
 pub enum Expr {
     Binary(Op, ExprRef, ExprRef),
     Compare(CompareOp, ExprRef, ExprRef),
-    Output(ExprRef),
+    Output(ExprRef, LangType),
+    StmtList(ExprRef, ExprRef), // start addr and end addr useful for looping
     // To interpret or compile 'If' remember to increment the then_addr by 1and jump there
     // to keep evaluating and return from else_addr.
     If(ExprRef, ExprRef, Option<ExprRef>),
-    Let(ExprRef, ExprRef, LangType), // name, value,type
+    Let(ExprRef, LangType), // value,type
     Assign(ExprRef, ExprRef),
     Call(ExprRef), // anything labeled in the source with a name
     LiteralInt(i64),
@@ -234,6 +235,10 @@ pub fn no_loc() -> TokenLocation {
     }
 }
 
+pub fn output_tok() -> Token {
+    Token(TokenValue::Output, no_loc())
+}
+
 pub fn int_tok(n: i64) -> Token {
     Token(TokenValue::Integer(n), no_loc())
 }
@@ -269,12 +274,23 @@ pub mod parser {
             Self { tokens, current: 0 }
         }
 
+        // Conditionally match next token and consume it.
         pub fn matches(&mut self, types: &[TokenValue]) -> bool {
             let found = types.iter().any(|t| self.check(t));
             if found {
                 self.advance();
             }
             found
+        }
+
+        // Consume next token if an exact match or return error
+        pub fn consume(&mut self, t: &TokenValue) {
+            if self.check(t) {
+                self.advance();
+            } else {
+                eprintln!("Unexpected token {:?}", &self.peek());
+                std::process::exit(1);
+            }
         }
 
         fn check(&self, token: &TokenValue) -> bool {
@@ -380,6 +396,8 @@ pub mod parser {
 
         fn statement_list(&mut self) -> CompileResult {
             let (mut stmt_addr, mut stmt_type) = self.statement();
+            let first_stmt_addr = stmt_addr;
+
             let mut look_ahead = self.next_token();
             while !matches!(look_ahead.value(), TokenValue::RightBrace)
                 && !matches!(look_ahead.value(), TokenValue::Else)
@@ -387,53 +405,87 @@ pub mod parser {
                 (stmt_addr, stmt_type) = self.statement();
                 look_ahead = self.next_token();
             }
-            (stmt_addr, stmt_type)
+            let stmt_list_addr = self.target.add(Expr::StmtList(first_stmt_addr, stmt_addr));
+            (stmt_list_addr, stmt_type)
         }
 
         fn statement(&mut self) -> CompileResult {
             let look_ahead = self.next_token();
             let (stmt_addr, stmt_type) = match look_ahead.value() {
-                TokenValue::If => {
-                    self.source.advance();
-                    self.source.matches(&[TokenValue::LeftParen]);
-                    let (cond_addr, et) = self.expression();
-                    if !matches!(et, LangType::Boolean) {
-                        self.print_error(
-                            "Must use a boolean type of expression in an if-statement.",
-                            &look_ahead,
-                        );
-                        std::process::exit(1);
-                    }
-                    self.source.matches(&[TokenValue::RightParen]);
-                    self.source.matches(&[TokenValue::LeftBrace]);
-                    let (then_addr, then_type) = self.statement_list();
-                    self.source.matches(&[TokenValue::RightBrace]);
-                    let if_addr = if matches!(self.next_token().value(), TokenValue::Else) {
-                        self.source.advance();
-                        self.source.matches(&[TokenValue::LeftBrace]);
-                        let (else_addr, else_type) = self.statement_list();
-                        self.source.matches(&[TokenValue::RightBrace]);
-                        if then_type.same_as(&else_type) {
-                            self.target
-                                .add(Expr::If(cond_addr, then_addr, Some(else_addr)))
-                        } else {
-                            let msg = format!(
-                                "Type mismatch between 'if' branches: THEN = '{:?}' ELSE = '{:?}'",
-                                &then_type, &else_type
-                            );
-                            self.print_error(&msg, &look_ahead);
-                            std::process::exit(1);
-                        }
-                    } else {
-                        self.target.add(Expr::If(cond_addr, then_addr, None))
-                    };
-                    (if_addr, then_type)
-                }
+                TokenValue::Let => self.let_stmt(),
+                TokenValue::Assign => self.assign_stmt(),
+                TokenValue::If => self.if_stmt(),
+                TokenValue::Output => self.output_stmt(),
                 _ => panic!("Not implemented!"),
             };
             self.source.matches(&[TokenValue::SemiColon]);
 
             (stmt_addr, stmt_type)
+        }
+
+        fn let_stmt(&mut self) -> CompileResult {
+            self.source.consume(&TokenValue::Let);
+            let look_ahead = self.next_token();
+            if let TokenValue::Ident(ref name) = look_ahead.value() {
+                self.source.advance();
+                self.source.consume(&TokenValue::EqualSign);
+                let (variable_value, variable_type) = self.expression();
+                let let_addr = self
+                    .target
+                    .add(Expr::Let(variable_value, variable_type.clone()));
+                self.symbols.set(self.current_frame, name, let_addr);
+                (let_addr, variable_type)
+            } else {
+                self.print_error("Expected identifier", &look_ahead);
+                std::process::exit(1);
+            }
+        }
+
+        fn assign_stmt(&mut self) -> CompileResult {
+            (ExprRef(0), LangType::Unit)
+        }
+
+        fn if_stmt(&mut self) -> CompileResult {
+            self.source.consume(&TokenValue::If);
+            self.source.consume(&TokenValue::LeftParen);
+            let (cond_addr, cond_et) = self.expression();
+            if !matches!(cond_et, LangType::Boolean) {
+                self.print_error(
+                    "Must use a boolean type of expression in an if-statement.",
+                    &self.next_token(),
+                );
+                std::process::exit(1);
+            }
+            self.source.consume(&TokenValue::RightParen);
+            self.source.consume(&TokenValue::LeftBrace);
+            let (then_addr, then_type) = self.statement_list();
+            self.source.consume(&TokenValue::RightBrace);
+            let if_addr = if self.source.matches(&[TokenValue::Else]) {
+                self.source.consume(&TokenValue::LeftBrace);
+                let (else_addr, else_type) = self.statement_list();
+                self.source.consume(&TokenValue::RightBrace);
+                if then_type.same_as(&else_type) {
+                    self.target
+                        .add(Expr::If(cond_addr, then_addr, Some(else_addr)))
+                } else {
+                    let msg = format!(
+                        "Type mismatch between 'if' branches: THEN = '{:?}' ELSE = '{:?}'",
+                        &then_type, &else_type
+                    );
+                    self.print_error(&msg, &self.next_token());
+                    std::process::exit(1);
+                }
+            } else {
+                self.target.add(Expr::If(cond_addr, then_addr, None))
+            };
+            (if_addr, then_type)
+        }
+
+        fn output_stmt(&mut self) -> CompileResult {
+            self.source.consume(&TokenValue::Output);
+            let (value_addr, value_type) = self.expression();
+            let output_addr = self.target.add(Expr::Output(value_addr, value_type));
+            (output_addr, LangType::Unit)
         }
 
         fn expression_list(&mut self) {
@@ -483,20 +535,21 @@ pub mod parser {
             if matches!(leading_op, Op::Sub) {
                 // Insert a -1
                 let negator_addr = self.target.add(Expr::LiteralInt(-1));
-                self.target
-                    .add(Expr::Binary(Op::Mul, negator_addr, lhs_addr));
-                let (rhs_addr, rhs_type) = self.simple_part();
+                let reverse_sign_addr =
+                    self.target
+                        .add(Expr::Binary(Op::Mul, negator_addr, lhs_addr));
+                let (rhs_addr, rhs_type) = self.simple_part(reverse_sign_addr);
                 if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
-                    (negator_addr, LangType::Float)
+                    (rhs_addr, LangType::Float)
                 } else {
-                    (negator_addr, LangType::Integer)
+                    (rhs_addr, LangType::Integer)
                 }
             } else {
-                let (rhs_addr, rhs_type) = self.simple_part();
+                let (rhs_addr, rhs_type) = self.simple_part(lhs_addr);
                 if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
-                    (lhs_addr, LangType::Float)
+                    (rhs_addr, LangType::Float)
                 } else {
-                    (lhs_addr, LangType::Integer)
+                    (rhs_addr, LangType::Integer)
                 }
             }
         }
@@ -504,7 +557,7 @@ pub mod parser {
         fn term(&mut self) -> CompileResult {
             let (lhs_addr, lhs_type) = self.factor();
             // Multiply by the term part
-            let (rhs_addr, rhs_type) = self.term_part();
+            let (rhs_addr, rhs_type) = self.term_part(lhs_addr);
 
             if matches!(lhs_type, LangType::Float) || matches!(rhs_type, LangType::Float) {
                 (rhs_addr, LangType::Float)
@@ -513,8 +566,7 @@ pub mod parser {
             }
         }
 
-        fn term_part(&mut self) -> CompileResult {
-            let lhs_addr = self.target.last_exprref();
+        fn term_part(&mut self, lhs_addr: ExprRef) -> CompileResult {
             let look_ahead = self.next_token();
             if look_ahead.is_mul_op() {
                 let op = if let TokenValue::Operator(mul_op) = look_ahead.value() {
@@ -529,7 +581,7 @@ pub mod parser {
                 let mul_op_addr = self
                     .target
                     .add(Expr::Binary(op.clone(), lhs_addr, rhs_addr));
-                let (next_part_addr, next_part_type) = self.term_part();
+                let (next_part_addr, next_part_type) = self.term_part(mul_op_addr);
                 if matches!(rhs_type, LangType::Float) || matches!(next_part_type, LangType::Float)
                 {
                     (next_part_addr, LangType::Float)
@@ -541,17 +593,17 @@ pub mod parser {
             }
         }
 
-        fn simple_part(&mut self) -> CompileResult {
-            let lhs_addr = self.target.last_exprref();
+        fn simple_part(&mut self, lhs_addr: ExprRef) -> CompileResult {
             let look_ahead = self.next_token();
             if look_ahead.is_add_op() {
                 if let TokenValue::Operator(ref op) = look_ahead.value() {
                     self.source.advance();
                     let (rhs_addr, rhs_type) = self.term();
-                    self.target
+                    let term_addr = self
+                        .target
                         .add(Expr::Binary(op.clone(), lhs_addr, rhs_addr));
 
-                    let (next_part_addr, next_part_type) = self.simple_part();
+                    let (next_part_addr, next_part_type) = self.simple_part(term_addr);
                     if matches!(next_part_type, LangType::Float)
                         || matches!(rhs_type, LangType::Float)
                     {
@@ -596,7 +648,7 @@ pub mod parser {
 
                         // get type of the referenced value
                         let orig_expr: &Expr = self.target.get(*value_storage);
-                        let call_type = if let Expr::Let(_, _, data_type) = orig_expr {
+                        let call_type = if let Expr::Let(_, data_type) = orig_expr {
                             data_type.clone()
                         } else {
                             panic!("Internal parser error. A call to '{}' has a reference to  something other than a 'let' statement.", &name );
@@ -643,12 +695,14 @@ pub fn run(code: Vec<Token>) {
     // Interpret the syntax pool
 }
 
+#[cfg(test)]
 mod test {
 
     use super::*;
 
-    fn test_program1_tokens() -> Vec<super::Token> {
+    fn program1_tokens() -> Vec<super::Token> {
         vec![
+            output_tok(),
             int_tok(5),
             op_tok(Op::Add),
             int_tok(9),
@@ -660,7 +714,7 @@ mod test {
 
     #[test]
     fn test_parser() {
-        let code = test_program1_tokens();
+        let code = program1_tokens();
         let mut language_parser = parser::LanguageParser::new(code);
         let expr_pool = language_parser
             .parse_program()

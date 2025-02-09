@@ -1,5 +1,10 @@
 // Try out some interesting ideas for a low-difficulty interpreter
 use std::collections::HashMap;
+
+pub fn debug(level: usize) -> bool {
+    true
+}
+
 #[derive(Debug, Clone)]
 pub struct TokenLocation {
     line: usize,
@@ -211,6 +216,9 @@ impl ExpressionPool {
     fn add(&mut self, expr: Expr) -> ExprRef {
         let idx = self.exprs.len();
         self.exprs.push(expr);
+        if (debug(0)) {
+            println!("{}: Produced {:?}", idx, self.exprs.last().unwrap());
+        }
         ExprRef(idx.try_into().expect("too many exprs in the pool"))
     }
 
@@ -255,6 +263,10 @@ pub fn op_tok(o: Op) -> Token {
     Token(TokenValue::Operator(o), no_loc())
 }
 
+pub fn stmt_terminator_tok() -> Token {
+    Token(TokenValue::SemiColon, no_loc())
+}
+
 pub fn eof_tok() -> Token {
     Token(TokenValue::Eof, no_loc())
 }
@@ -284,12 +296,14 @@ pub mod parser {
         }
 
         // Consume next token if an exact match or return error
-        pub fn consume(&mut self, t: &TokenValue) {
+        pub fn consume(&mut self, t: &TokenValue) -> bool {
             if self.check(t) {
                 self.advance();
+                true
             } else {
-                eprintln!("Unexpected token {:?}", &self.peek());
-                std::process::exit(1);
+                eprintln!("Wanted '{:?}', Unexpected token {:?}", &t, &self.peek());
+                //std::process::exit(1);
+                false
             }
         }
 
@@ -389,6 +403,7 @@ pub mod parser {
         // The grammar specific logic ---------------------
         pub fn parse_program(&mut self) -> Option<&ExpressionPool> {
             self.statement_list();
+            self.source.consume(&TokenValue::Eof);
             Some(&self.target)
         }
 
@@ -399,9 +414,12 @@ pub mod parser {
             let first_stmt_addr = stmt_addr;
 
             let mut look_ahead = self.next_token();
-            while !matches!(look_ahead.value(), TokenValue::RightBrace)
+            while !matches!(look_ahead.value(), TokenValue::Eof)
+                && !matches!(look_ahead.value(), TokenValue::RightBrace)
                 && !matches!(look_ahead.value(), TokenValue::Else)
             {
+                // This is the statement separator
+                self.source.consume(&TokenValue::SemiColon);
                 (stmt_addr, stmt_type) = self.statement();
                 look_ahead = self.next_token();
             }
@@ -416,9 +434,8 @@ pub mod parser {
                 TokenValue::Assign => self.assign_stmt(),
                 TokenValue::If => self.if_stmt(),
                 TokenValue::Output => self.output_stmt(),
-                _ => panic!("Not implemented!"),
+                _ => panic!("Statement not implemented! Token was {:?}", &look_ahead),
             };
-            self.source.matches(&[TokenValue::SemiColon]);
 
             (stmt_addr, stmt_type)
         }
@@ -708,6 +725,9 @@ mod test {
             int_tok(9),
             op_tok(Op::Mul),
             int_tok(55),
+            stmt_terminator_tok(),
+            output_tok(),
+            int_tok(0),
             eof_tok(),
         ]
     }

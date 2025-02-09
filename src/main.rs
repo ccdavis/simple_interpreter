@@ -732,8 +732,10 @@ mod test {
         ]
     }
 
+
+
     #[test]
-    fn test_parser() {
+    fn test_multi_stmt_program() {
         let code = program1_tokens();
         let mut language_parser = parser::LanguageParser::new(code);
         let expr_pool = language_parser
@@ -741,6 +743,29 @@ mod test {
             .expect("Error during parsing.");
         assert!(expr_pool.size() > 0);
     }
+
+    #[test]
+    fn test_literals() {
+        let string_test = vec![output_tok(), str_tok("Hello")];
+        let string_program = try_parsing(string_test);
+        assert!(string_program.is_ok());
+        assert_eq!(2, string_program.unwrap().exprs.len());
+    }
+
+    fn try_parsing(code: Vec<Token>) -> Result<ExpressionPool, String> {
+        let mut language_parser = parser::LanguageParser::new(code);
+        let expr_pool = language_parser
+            .parse_program();
+
+        // TODO Put in real error handling
+        if let Some(output)  = expr_pool {
+            Ok(*output.clone())
+        } else {
+            Err(format!("No results from parsing. Check STDERR."))
+        }
+            
+    }
+
 }
 
 fn main() {

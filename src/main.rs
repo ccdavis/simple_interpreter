@@ -165,7 +165,7 @@ impl Token {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Expr {
     Binary(Op, ExprRef, ExprRef),
     Compare(CompareOp, ExprRef, ExprRef),
@@ -187,7 +187,7 @@ pub enum Expr {
 
 #[derive(Debug, Clone, Copy)]
 pub struct ExprRef(u32);
-
+#[derive(Clone,Debug)]
 pub struct ExpressionPool {
     // Indexed by ExprRef
     exprs: Vec<Expr>,
@@ -401,10 +401,11 @@ pub mod parser {
         }
 
         // The grammar specific logic ---------------------
-        pub fn parse_program(&mut self) -> Option<&ExpressionPool> {
+        pub fn parse_program(&mut self) -> Option<ExpressionPool> {
             self.statement_list();
             self.source.consume(&TokenValue::Eof);
-            Some(&self.target)
+            // TODO move this to a separate clone function 
+            Some(self.target.clone())
         }
 
         // I'm going to convert these statements into expression-statements.
@@ -746,10 +747,11 @@ mod test {
 
     #[test]
     fn test_literals() {
-        let string_test = vec![output_tok(), str_tok("Hello")];
+        let string_test = vec![output_tok(), str_tok("Hello"), eof_tok()];
         let string_program = try_parsing(string_test);
         assert!(string_program.is_ok());
-        assert_eq!(2, string_program.unwrap().exprs.len());
+        // Three expressions: 1. string, 2. 'output', 3. stmt_list
+        assert_eq!(3, string_program.unwrap().exprs.len());
     }
 
     fn try_parsing(code: Vec<Token>) -> Result<ExpressionPool, String> {
@@ -759,7 +761,7 @@ mod test {
 
         // TODO Put in real error handling
         if let Some(output)  = expr_pool {
-            Ok(*output.clone())
+            Ok(output)
         } else {
             Err(format!("No results from parsing. Check STDERR."))
         }

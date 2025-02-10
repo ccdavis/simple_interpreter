@@ -14,7 +14,7 @@ pub struct TokenLocation {
 
 // Op is shared between tokens and expressions -- they exactly match token types
 // and types of operations in expressions.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Op {
     Add,
     Sub,
@@ -33,7 +33,7 @@ impl Op {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum CompareOp {
     Gt,
     Lt,
@@ -43,7 +43,7 @@ pub enum CompareOp {
     Gte,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LangType {
     Integer,
     Float,
@@ -54,6 +54,7 @@ pub enum LangType {
         parent: Option<Box<LangType>>,
     },
     Unit,
+    Unresolved,
 }
 
 impl LangType {
@@ -76,6 +77,17 @@ impl LangType {
         }
     }
 
+    pub fn both_string(lhs: &Self, rhs: &Self) -> bool {
+        match (lhs, rhs) {
+            (&Self::String, &Self::String) => true,
+            _ => false,
+        }
+    }
+
+    pub fn both_scalar(lhs: &Self, rhs: &Self) -> bool {
+        lhs.scalar() && rhs.scalar()
+    }
+
     // Exact type match including user defined types
     pub fn same_as(&self, other: &Self) -> bool {
         if let (LangType::Named { name: name1, .. }, LangType::Named { name: name2, .. }) =
@@ -89,6 +101,25 @@ impl LangType {
 
     pub fn same_major_type_as(&self, other: &Self) -> bool {
         std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+
+    // strings can be combined or scalars can be combined, and integers with even one float part
+    // become floats.
+    pub fn type_of_expression_parts(lhs_type: &Self, rhs_type: &Self) -> Self {
+        if LangType::both_scalar(&lhs_type, &rhs_type) {
+            if matches!(lhs_type, LangType::Float) || matches!(rhs_type, LangType::Float) {
+                LangType::Float
+            } else {
+                LangType::Integer
+            }
+        } else if LangType::both_string(&lhs_type, &rhs_type) {
+            LangType::String
+        } else {
+            panic!(
+                "Invalid type combination '{:?}', '{:?}'",
+                lhs_type, rhs_type
+            );
+        }
     }
 }
 
@@ -165,7 +196,7 @@ impl Token {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Binary(Op, ExprRef, ExprRef),
     Compare(CompareOp, ExprRef, ExprRef),
@@ -185,9 +216,15 @@ pub enum Expr {
     Unit,
 }
 
-#[derive(Debug, Clone, Copy)]
+impl Expr {
+    pub fn same_type(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExprRef(u32);
-#[derive(Clone,Debug)]
+#[derive(Clone, Debug)]
 pub struct ExpressionPool {
     // Indexed by ExprRef
     exprs: Vec<Expr>,
@@ -210,6 +247,11 @@ impl ExpressionPool {
     /// Dereference an AST node reference, obtaining the underlying `Expr`.
     fn get(&self, expr_ref: ExprRef) -> &Expr {
         &self.exprs[expr_ref.0 as usize]
+    }
+
+    // Get a clone of an expression at address e for convenience
+    fn expr(&self, e: usize) -> Expr {
+        self.exprs[e].clone()
     }
 
     /// Add an expression to the pool and get a reference to it.
@@ -404,7 +446,7 @@ pub mod parser {
         pub fn parse_program(&mut self) -> Option<ExpressionPool> {
             self.statement_list();
             self.source.consume(&TokenValue::Eof);
-            // TODO move this to a separate clone function 
+            // TODO move this to a separate clone function
             Some(self.target.clone())
         }
 
@@ -556,35 +598,28 @@ pub mod parser {
                 let reverse_sign_addr =
                     self.target
                         .add(Expr::Binary(Op::Mul, negator_addr, lhs_addr));
-                let (rhs_addr, rhs_type) = self.simple_part(reverse_sign_addr);
+                let (rhs_addr, rhs_type) = self.simple_part(reverse_sign_addr, &LangType::Integer);
                 if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
                     (rhs_addr, LangType::Float)
                 } else {
                     (rhs_addr, LangType::Integer)
                 }
             } else {
-                let (rhs_addr, rhs_type) = self.simple_part(lhs_addr);
-                if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
-                    (rhs_addr, LangType::Float)
-                } else {
-                    (rhs_addr, LangType::Integer)
-                }
+                let (rhs_addr, rhs_type) = self.simple_part(lhs_addr, &lhs_type);
+                let simple_part_type = LangType::type_of_expression_parts(&lhs_type, &rhs_type);
+                (rhs_addr, simple_part_type)
             }
         }
 
         fn term(&mut self) -> CompileResult {
             let (lhs_addr, lhs_type) = self.factor();
             // Multiply by the term part
-            let (rhs_addr, rhs_type) = self.term_part(lhs_addr);
-
-            if matches!(lhs_type, LangType::Float) || matches!(rhs_type, LangType::Float) {
-                (rhs_addr, LangType::Float)
-            } else {
-                (rhs_addr, LangType::Integer)
-            }
+            let (rhs_addr, rhs_type) = self.term_part(lhs_addr, &lhs_type);
+            let term_type = LangType::type_of_expression_parts(&lhs_type, &rhs_type);
+            (rhs_addr, term_type)
         }
 
-        fn term_part(&mut self, lhs_addr: ExprRef) -> CompileResult {
+        fn term_part(&mut self, lhs_addr: ExprRef, last_factor_type: &LangType) -> CompileResult {
             let look_ahead = self.next_token();
             if look_ahead.is_mul_op() {
                 let op = if let TokenValue::Operator(mul_op) = look_ahead.value() {
@@ -599,7 +634,18 @@ pub mod parser {
                 let mul_op_addr = self
                     .target
                     .add(Expr::Binary(op.clone(), lhs_addr, rhs_addr));
-                let (next_part_addr, next_part_type) = self.term_part(mul_op_addr);
+
+                let (next_part_addr, next_part_type) = self.term_part(mul_op_addr, &rhs_type);
+
+                // Mul or Div can only be done on scalars:
+                if !LangType::both_scalar(&next_part_type, &rhs_type) {
+                    let msg = format!(
+                        "Left and right must be scalar: '{:?}', '{:?}'",
+                        &next_part_type, &rhs_type
+                    );
+                    self.print_error(&msg, &look_ahead);
+                    std::process::exit(1);
+                }
                 if matches!(rhs_type, LangType::Float) || matches!(next_part_type, LangType::Float)
                 {
                     (next_part_addr, LangType::Float)
@@ -607,11 +653,11 @@ pub mod parser {
                     (next_part_addr, LangType::Integer)
                 }
             } else {
-                (lhs_addr, LangType::Integer)
+                (lhs_addr, last_factor_type.clone())
             }
         }
 
-        fn simple_part(&mut self, lhs_addr: ExprRef) -> CompileResult {
+        fn simple_part(&mut self, lhs_addr: ExprRef, last_lhs_type: &LangType) -> CompileResult {
             let look_ahead = self.next_token();
             if look_ahead.is_add_op() {
                 if let TokenValue::Operator(ref op) = look_ahead.value() {
@@ -621,21 +667,20 @@ pub mod parser {
                         .target
                         .add(Expr::Binary(op.clone(), lhs_addr, rhs_addr));
 
-                    let (next_part_addr, next_part_type) = self.simple_part(term_addr);
-                    if matches!(next_part_type, LangType::Float)
-                        || matches!(rhs_type, LangType::Float)
-                    {
-                        (next_part_addr, LangType::Float)
-                    } else {
-                        (next_part_addr, LangType::Integer)
-                    }
+                    let last_part_type =
+                        LangType::type_of_expression_parts(last_lhs_type, &rhs_type);
+                    let (next_part_addr, next_part_type) =
+                        self.simple_part(term_addr, &last_part_type);
+
+                    let simple_part_type =
+                        LangType::type_of_expression_parts(&next_part_type, &rhs_type);
+                    (next_part_addr, simple_part_type)
                 } else {
-                    panic!(
-                        "Internal error. No 'add' operator should not match the Operator variant."
-                    );
+                    panic!("Internal parser error.");
                 }
             } else {
-                (lhs_addr, LangType::Integer)
+                // No more parts to the expression, preserve type
+                (lhs_addr, last_lhs_type.clone())
             }
         }
 
@@ -733,8 +778,6 @@ mod test {
         ]
     }
 
-
-
     #[test]
     fn test_multi_stmt_program() {
         let code = program1_tokens();
@@ -750,24 +793,29 @@ mod test {
         let string_test = vec![output_tok(), str_tok("Hello"), eof_tok()];
         let string_program = try_parsing(string_test);
         assert!(string_program.is_ok());
+        let program = string_program.unwrap();
         // Three expressions: 1. string, 2. 'output', 3. stmt_list
-        assert_eq!(3, string_program.unwrap().exprs.len());
+        assert_eq!(3, program.size());
+
+        let output_stmt = Expr::Output(ExprRef(0), LangType::String);
+        let string_literal = Expr::LiteralString("Hello".to_string());
+        let stmt_list = Expr::StmtList(ExprRef(1), ExprRef(1));
+
+        assert_eq!(string_literal, program.expr(0));
+        assert_eq!(output_stmt, program.expr(1));
     }
 
     fn try_parsing(code: Vec<Token>) -> Result<ExpressionPool, String> {
         let mut language_parser = parser::LanguageParser::new(code);
-        let expr_pool = language_parser
-            .parse_program();
+        let expr_pool = language_parser.parse_program();
 
         // TODO Put in real error handling
-        if let Some(output)  = expr_pool {
+        if let Some(output) = expr_pool {
             Ok(output)
         } else {
             Err(format!("No results from parsing. Check STDERR."))
         }
-            
     }
-
 }
 
 fn main() {

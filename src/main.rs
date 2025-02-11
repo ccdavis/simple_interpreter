@@ -309,6 +309,18 @@ pub fn stmt_terminator_tok() -> Token {
     Token(TokenValue::SemiColon, no_loc())
 }
 
+pub fn let_stmt_tok() -> Token {
+    Token(TokenValue::Let, no_loc())
+}
+
+pub fn equals_tok() -> Token {
+    Token(TokenValue::EqualSign, no_loc())
+}
+
+pub fn ident_tok(n: &str) -> Token {
+    Token(TokenValue::Ident(n.to_string()), no_loc())
+}
+
 pub fn eof_tok() -> Token {
     Token(TokenValue::Eof, no_loc())
 }
@@ -358,7 +370,10 @@ pub mod parser {
         }
 
         fn peek(&self) -> &Token {
-            &self.tokens[self.current]
+            &self
+                .tokens
+                .get(self.current)
+                .expect("Expected an EOF token before reaching the end of the token list.")
         }
 
         fn previous(&self) -> &Token {
@@ -378,6 +393,9 @@ pub mod parser {
     pub struct SymbolTable(Vec<HashMap<String, ExprRef>>);
 
     impl SymbolTable {
+        pub fn current_frame(&self) -> usize {
+            self.0.len()
+        }
         pub fn default() -> Self {
             SymbolTable(vec![HashMap::new()])
         }
@@ -387,7 +405,7 @@ pub mod parser {
         }
 
         pub fn set(&mut self, frame: usize, name: &str, value: ExprRef) {
-            if self.0.len() >= frame {
+            if self.0.len() <= frame {
                 // This should never happen in a properly designed parser.
                 panic!(
                     "Stack frame not created. Internal error adding {} on frame {}",
@@ -431,6 +449,10 @@ pub mod parser {
 
         fn next_token(&self) -> Token {
             self.source.peek().clone()
+        }
+
+        pub fn symbol_table_frame(&self) -> usize {
+            self.symbols.current_frame()
         }
 
         pub fn new(code: Vec<Token>) -> Self {
@@ -788,6 +810,33 @@ mod test {
         assert!(expr_pool.size() > 0);
     }
 
+    // TODO this needs to wait for proper Result return types
+    fn test_invalid_program() {
+        let tokens = vec![int_tok(1), output_tok(), op_tok(Op::Add)];
+        let program = try_parsing(tokens);
+        assert!(program.is_err());
+    }
+
+    #[test]
+    fn test_let_stmt() {
+        let code = vec![
+            let_stmt_tok(),
+            ident_tok("a"),
+            equals_tok(),
+            int_tok(8),
+            eof_tok(),
+        ];
+        let program = try_parsing(code);
+        assert!(program.is_ok());
+        let exprs = program.unwrap();
+
+        // Has the assigned value expr, the 'let' expr, and the statement-list expr.
+        assert_eq!(3, exprs.size());
+        assert_eq!(exprs.exprs[0], Expr::LiteralInt(8));
+        assert_eq!(exprs.exprs[1], Expr::Let(ExprRef(0), LangType::Integer));
+        assert_eq!(exprs.exprs[2], Expr::StmtList(ExprRef(1), ExprRef(1)));
+    }
+
     #[test]
     fn test_literals() {
         let string_test = vec![output_tok(), str_tok("Hello"), eof_tok()];
@@ -803,10 +852,20 @@ mod test {
 
         assert_eq!(string_literal, program.expr(0));
         assert_eq!(output_stmt, program.expr(1));
+
+        let string_test = vec![output_tok(), int_tok(99), eof_tok()];
+        let int_program = try_parsing(string_test);
+        assert!(int_program.is_ok());
+        let program = int_program.unwrap();
+        let output_stmt = Expr::Output(ExprRef(0), LangType::Integer);
+        let int_literal = Expr::LiteralInt(99);
+        assert_eq!(int_literal, program.expr(0));
+        assert_eq!(output_stmt, program.expr(1));
     }
 
     fn try_parsing(code: Vec<Token>) -> Result<ExpressionPool, String> {
         let mut language_parser = parser::LanguageParser::new(code);
+        assert_eq!(1, language_parser.symbol_table_frame());
         let expr_pool = language_parser.parse_program();
 
         // TODO Put in real error handling

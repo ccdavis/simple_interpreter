@@ -1,6 +1,7 @@
 // Try out some interesting ideas for a low-difficulty interpreter
 pub mod compiler;
 pub mod expression;
+pub mod interpreter;
 pub mod parser;
 pub mod symbols;
 pub mod token;

@@ -17,6 +17,7 @@ pub enum Expr {
     LiteralInt(i64),
     LiteralFloat(f64),
     LiteralString(String),
+    LiteralBool(bool),
     For(ExprRef, ExprRef),
     Type(LangType),
     Unit,
@@ -34,6 +35,7 @@ pub struct ExprRef(pub u32);
 pub struct ExpressionPool {
     // Indexed by ExprRef
     pub exprs: Vec<Expr>,
+    pub types: Vec<LangType>,
     // Use a token to hold the location of a language part for error reporting
     index_to_source: Vec<Token>,
 }
@@ -45,8 +47,9 @@ impl ExpressionPool {
 
     pub fn default() -> Self {
         Self {
-            exprs: Vec::with_capacity(100_000_000),
-            index_to_source: Vec::with_capacity(100_000_000),
+            exprs: Vec::with_capacity(100_000),
+            types: Vec::with_capacity(100_000),
+            index_to_source: Vec::with_capacity(100_000),
         }
     }
 

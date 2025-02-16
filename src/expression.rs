@@ -73,6 +73,10 @@ impl ExpressionPool {
         ExprRef(idx.try_into().expect("too many exprs in the pool"))
     }
 
+    pub fn update(&mut self, expr_ref: ExprRef, expr: Expr) {
+        self.exprs[expr_ref.0 as usize] = expr
+    }
+
     pub fn last_exprref(&self) -> ExprRef {
         ExprRef((self.size() - 1).try_into().expect("Can't get ExprRef"))
     }

@@ -53,6 +53,7 @@ impl LanguageParser {
     // I'm going to convert these statements into expression-statements.
 
     fn statement_list(&mut self) -> CompileResult {
+        let stmt_list_addr = self.target.add(Expr::StmtList(ExprRef(0), ExprRef(0)));
         let (mut stmt_addr, mut stmt_type) = self.statement();
         let first_stmt_addr = stmt_addr;
 
@@ -66,7 +67,8 @@ impl LanguageParser {
             (stmt_addr, stmt_type) = self.statement();
             look_ahead = self.next_token();
         }
-        let stmt_list_addr = self.target.add(Expr::StmtList(first_stmt_addr, stmt_addr));
+        self.target
+            .update(stmt_list_addr, Expr::StmtList(first_stmt_addr, stmt_addr));
         (stmt_list_addr, stmt_type)
     }
 
@@ -117,16 +119,39 @@ impl LanguageParser {
             std::process::exit(1);
         }
         self.source.consume(&TokenValue::RightParen);
+        // Insert the 'if' statement before the statement-list branches
+        let if_stmt_addr = self.target.add(Expr::If(cond_addr, ExprRef(0), None));
+
         self.source.consume(&TokenValue::LeftBrace);
         let (then_addr, then_type) = self.statement_list();
         self.source.consume(&TokenValue::RightBrace);
-        let if_addr = if self.source.matches(&[TokenValue::Else]) {
+
+        // The then_addr points to a statement list from which we can compute the location past
+        // the last statement in the 'then' branch. This is the location the interpreter
+        //must jump to if the condition is false, regardless of the presence of an 'else' branch.
+        let conditional_branch_addr = if let Expr::StmtList(_, l) = self.target.get(then_addr) {
+            ExprRef(l.0 + 1)
+        } else {
+            panic!("Internal compiler error. A 'then' branch of an if statement must be a statement list.");
+        };
+
+        if self.source.matches(&[TokenValue::Else]) {
             self.source.consume(&TokenValue::LeftBrace);
             let (else_addr, else_type) = self.statement_list();
             self.source.consume(&TokenValue::RightBrace);
             if then_type.same_as(&else_type) {
-                self.target
-                    .add(Expr::If(cond_addr, then_addr, Some(else_addr)))
+                // The 'else_addr' marks the location where the interpreter should jump to if
+                // the condition is true and we executed the statements in the 'then' branch, and
+                // an 'else' branch exists, so it must jump past it.
+                let continue_addr = if let Expr::StmtList(_, l) = self.target.get(else_addr) {
+                    ExprRef(l.0 + 1)
+                } else {
+                    panic!("Internal compiler error. A 'else' branch of an if statement must be a statement list.");
+                };
+
+                let completed_if =
+                    Expr::If(cond_addr, conditional_branch_addr, Some(continue_addr));
+                self.target.update(if_stmt_addr, completed_if);
             } else {
                 let msg = format!(
                     "Type mismatch between 'if' branches: THEN = '{:?}' ELSE = '{:?}'",
@@ -136,9 +161,10 @@ impl LanguageParser {
                 std::process::exit(1);
             }
         } else {
-            self.target.add(Expr::If(cond_addr, then_addr, None))
-        };
-        (if_addr, then_type)
+            let completed_if = Expr::If(cond_addr, conditional_branch_addr, None);
+            self.target.update(if_stmt_addr, completed_if);
+        }
+        (if_stmt_addr, then_type)
     }
 
     fn output_stmt(&mut self) -> CompileResult {
@@ -448,9 +474,9 @@ mod test {
 
         // Has the assigned value expr, the 'let' expr, and the statement-list expr.
         assert_eq!(3, exprs.size());
-        assert_eq!(exprs.exprs[0], Expr::LiteralInt(8));
-        assert_eq!(exprs.exprs[1], Expr::Let(ExprRef(0), LangType::Integer));
-        assert_eq!(exprs.exprs[2], Expr::StmtList(ExprRef(1), ExprRef(1)));
+        assert_eq!(exprs.exprs[0], Expr::StmtList(ExprRef(2), ExprRef(2)));
+        assert_eq!(exprs.exprs[1], Expr::LiteralInt(8));
+        assert_eq!(exprs.exprs[2], Expr::Let(ExprRef(1), LangType::Integer));
     }
 
     #[test]
@@ -462,21 +488,21 @@ mod test {
         // Three expressions: 1. string, 2. 'output', 3. stmt_list
         assert_eq!(3, program.size());
 
-        let output_stmt = Expr::Output(ExprRef(0), LangType::String);
         let string_literal = Expr::LiteralString("Hello".to_string());
-        let stmt_list = Expr::StmtList(ExprRef(1), ExprRef(1));
+        let output_stmt = Expr::Output(ExprRef(1), LangType::String);
+        let stmt_list = Expr::StmtList(ExprRef(2), ExprRef(2));
 
-        assert_eq!(string_literal, program.expr(0));
-        assert_eq!(output_stmt, program.expr(1));
+        assert_eq!(string_literal, program.expr(1));
+        assert_eq!(output_stmt, program.expr(2));
 
         let string_test = vec![output_tok(), int_tok(99), eof_tok()];
         let int_program = try_parsing(string_test);
         assert!(int_program.is_ok());
         let program = int_program.unwrap();
-        let output_stmt = Expr::Output(ExprRef(0), LangType::Integer);
         let int_literal = Expr::LiteralInt(99);
-        assert_eq!(int_literal, program.expr(0));
-        assert_eq!(output_stmt, program.expr(1));
+        let output_stmt = Expr::Output(ExprRef(1), LangType::Integer);
+        assert_eq!(int_literal, program.expr(1));
+        assert_eq!(output_stmt, program.expr(2));
     }
 
     fn try_parsing(code: Vec<Token>) -> Result<ExpressionPool, String> {

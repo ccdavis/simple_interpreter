@@ -495,8 +495,8 @@ mod test {
         assert_eq!(string_literal, program.expr(1));
         assert_eq!(output_stmt, program.expr(2));
 
-        let string_test = vec![output_tok(), int_tok(99), eof_tok()];
-        let int_program = try_parsing(string_test);
+        let integer_test = vec![output_tok(), int_tok(99), eof_tok()];
+        let int_program = try_parsing(integer_test);
         assert!(int_program.is_ok());
         let program = int_program.unwrap();
         let int_literal = Expr::LiteralInt(99);

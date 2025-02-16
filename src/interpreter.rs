@@ -175,6 +175,8 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
 #[cfg(test)]
 mod test {
     use super::*;
+    use super::super::token::*;
+    use super::super::LanguageParser;
 
     #[test]
     fn test_interpret_simple_stmt() {
@@ -192,4 +194,64 @@ mod test {
         let result = run(&pool, ExprRef(0));
         assert!(matches!(result, Value::None));
     }
+
+    #[test]
+    fn test_let_and_call_stmt() {
+        let mut pool = ExpressionPool::default();
+        pool.add(Expr::StmtList(ExprRef(2), ExprRef(4)));
+        pool.add(Expr::LiteralInt(5));
+        pool.add(Expr::Let(ExprRef(1), LangType::Integer));
+        pool.add(Expr::Call(ExprRef(2)));
+        pool.add(Expr::Output(ExprRef(3), LangType::Integer));
+        let result = run(&pool, ExprRef(0));
+        assert!(matches!(result, Value::None));
+
+    }
+
+    
+    #[test]
+    fn test_end_to_end_program() {
+        let code = program1_tokens();
+        let mut language_parser = LanguageParser::new(code);
+        let expr_pool = language_parser
+            .parse_program()
+            .expect("Error during parsing.");
+        assert!(expr_pool.size() > 0);
+        let result = run(&expr_pool, ExprRef(0));
+    }
+
+
+
+    fn program1_tokens() -> Vec<Token> {
+        vec![
+            output_tok(),
+            int_tok(5),
+            op_tok(Op::Add),
+            int_tok(9),
+            op_tok(Op::Mul),
+            int_tok(55),                        
+            stmt_terminator_tok(),
+            output_tok(),
+            int_tok(0),
+            op_tok(Op::Mul),
+            int_tok(5),
+            
+            eof_tok(),
+        ]    
+    }
+
+
+    fn try_parsing(code: Vec<Token>) -> Result<ExpressionPool, String> {
+        let mut language_parser = LanguageParser::new(code);
+        assert_eq!(1, language_parser.symbol_table_frame());
+        let expr_pool = language_parser.parse_program();
+
+        // TODO Put in real error handling
+        if let Some(output) = expr_pool {
+            Ok(output)
+        } else {
+            Err(format!("No results from parsing. Check STDERR."))
+        }
+    }
+
 }

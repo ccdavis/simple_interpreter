@@ -374,58 +374,9 @@ impl LanguageParser {
 mod test {
 
     use super::super::expression::*;
-    use super::super::token::{Op, Token, TokenLocation, TokenValue};
+    use super::super::token::*;
     use super::super::types::LangType;
     use super::super::*;
-
-    // helper functions
-    pub fn no_loc() -> TokenLocation {
-        TokenLocation {
-            column: 0,
-            line: 0,
-            column_end: 0,
-        }
-    }
-
-    pub fn output_tok() -> Token {
-        Token(TokenValue::Output, no_loc())
-    }
-
-    pub fn int_tok(n: i64) -> Token {
-        Token(TokenValue::Integer(n), no_loc())
-    }
-
-    pub fn flt_tok(n: f64) -> Token {
-        Token(TokenValue::Float(n), no_loc())
-    }
-
-    pub fn str_tok(s: &str) -> Token {
-        Token(TokenValue::Str(s.to_string()), no_loc())
-    }
-
-    pub fn op_tok(o: Op) -> Token {
-        Token(TokenValue::Operator(o), no_loc())
-    }
-
-    pub fn stmt_terminator_tok() -> Token {
-        Token(TokenValue::SemiColon, no_loc())
-    }
-
-    pub fn let_stmt_tok() -> Token {
-        Token(TokenValue::Let, no_loc())
-    }
-
-    pub fn equals_tok() -> Token {
-        Token(TokenValue::EqualSign, no_loc())
-    }
-
-    pub fn ident_tok(n: &str) -> Token {
-        Token(TokenValue::Ident(n.to_string()), no_loc())
-    }
-
-    pub fn eof_tok() -> Token {
-        Token(TokenValue::Eof, no_loc())
-    }
 
     fn program1_tokens() -> Vec<super::Token> {
         vec![

@@ -174,9 +174,9 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
 
 #[cfg(test)]
 mod test {
-    use super::*;
     use super::super::token::*;
     use super::super::LanguageParser;
+    use super::*;
 
     #[test]
     fn test_interpret_simple_stmt() {
@@ -205,10 +205,45 @@ mod test {
         pool.add(Expr::Output(ExprRef(3), LangType::Integer));
         let result = run(&pool, ExprRef(0));
         assert!(matches!(result, Value::None));
-
     }
 
-    
+    #[test]
+    fn test_if_stmt() {
+        let program = vec![
+            let_stmt_tok(),
+            ident_tok("a"),
+            equals_tok(),
+            int_tok(0),
+            stmt_terminator_tok(),
+            if_stmt_tok(),
+            left_paren_tok(),
+            int_tok(5),
+            equals_tok(),
+            int_tok(8),
+            right_paren_tok(),
+            left_brace_tok(),
+            ident_tok("a"),
+            assign_tok(), // :=
+            int_tok(-1),
+            right_brace_tok(),
+            else_tok(),
+            left_brace_tok(),
+            ident_tok("a"),
+            assign_tok(),
+            int_tok(1),
+            right_brace_tok(),
+        ];
+        let parsed_code = try_parsing(program);
+        let ir = match parsed_code {
+            Err(e) => {
+                panic!("Failed to parse test program: {}", &e);
+            }
+            Ok(code) => code,
+        };
+        let result = run(&ir, ExprRef(0));
+        assert!(matches!(result, Value::None));
+    }
+
     #[test]
     fn test_end_to_end_program() {
         let code = program1_tokens();
@@ -220,8 +255,6 @@ mod test {
         let result = run(&expr_pool, ExprRef(0));
     }
 
-
-
     fn program1_tokens() -> Vec<Token> {
         vec![
             output_tok(),
@@ -229,17 +262,15 @@ mod test {
             op_tok(Op::Add),
             int_tok(9),
             op_tok(Op::Mul),
-            int_tok(55),                        
+            int_tok(55),
             stmt_terminator_tok(),
             output_tok(),
             int_tok(0),
             op_tok(Op::Mul),
             int_tok(5),
-            
             eof_tok(),
-        ]    
+        ]
     }
-
 
     fn try_parsing(code: Vec<Token>) -> Result<ExpressionPool, String> {
         let mut language_parser = LanguageParser::new(code);
@@ -253,5 +284,4 @@ mod test {
             Err(format!("No results from parsing. Check STDERR."))
         }
     }
-
 }

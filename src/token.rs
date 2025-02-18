@@ -109,53 +109,79 @@ impl Token {
     }
 }
 
-
-    // helper functions
-    pub fn no_loc() -> TokenLocation {
-        TokenLocation {
-            column: 0,
-            line: 0,
-            column_end: 0,
-        }
+// helper functions
+pub fn no_loc() -> TokenLocation {
+    TokenLocation {
+        column: 0,
+        line: 0,
+        column_end: 0,
     }
+}
 
-    pub fn output_tok() -> Token {
-        Token(TokenValue::Output, no_loc())
-    }
+pub fn if_stmt_tok() -> Token {
+    Token(TokenValue::If, no_loc())
+}
 
-    pub fn int_tok(n: i64) -> Token {
-        Token(TokenValue::Integer(n), no_loc())
-    }
+pub fn else_tok() -> Token {
+    Token(TokenValue::Else, no_loc())
+}
 
-    pub fn flt_tok(n: f64) -> Token {
-        Token(TokenValue::Float(n), no_loc())
-    }
+pub fn output_tok() -> Token {
+    Token(TokenValue::Output, no_loc())
+}
 
-    pub fn str_tok(s: &str) -> Token {
-        Token(TokenValue::Str(s.to_string()), no_loc())
-    }
+pub fn int_tok(n: i64) -> Token {
+    Token(TokenValue::Integer(n), no_loc())
+}
 
-    pub fn op_tok(o: Op) -> Token {
-        Token(TokenValue::Operator(o), no_loc())
-    }
+pub fn flt_tok(n: f64) -> Token {
+    Token(TokenValue::Float(n), no_loc())
+}
 
-    pub fn stmt_terminator_tok() -> Token {
-        Token(TokenValue::SemiColon, no_loc())
-    }
+pub fn str_tok(s: &str) -> Token {
+    Token(TokenValue::Str(s.to_string()), no_loc())
+}
 
-    pub fn let_stmt_tok() -> Token {
-        Token(TokenValue::Let, no_loc())
-    }
+pub fn op_tok(o: Op) -> Token {
+    Token(TokenValue::Operator(o), no_loc())
+}
 
-    pub fn equals_tok() -> Token {
-        Token(TokenValue::EqualSign, no_loc())
-    }
+pub fn stmt_terminator_tok() -> Token {
+    Token(TokenValue::SemiColon, no_loc())
+}
 
-    pub fn ident_tok(n: &str) -> Token {
-        Token(TokenValue::Ident(n.to_string()), no_loc())
-    }
+pub fn let_stmt_tok() -> Token {
+    Token(TokenValue::Let, no_loc())
+}
 
-    pub fn eof_tok() -> Token {
-        Token(TokenValue::Eof, no_loc())
-    }
+pub fn equals_tok() -> Token {
+    Token(TokenValue::EqualSign, no_loc())
+}
 
+pub fn assign_tok() -> Token {
+    Token(TokenValue::Assign, no_loc())
+}
+
+pub fn ident_tok(n: &str) -> Token {
+    Token(TokenValue::Ident(n.to_string()), no_loc())
+}
+
+pub fn left_brace_tok() -> Token {
+    Token(TokenValue::LeftBrace, no_loc())
+}
+
+pub fn right_brace_tok() -> Token {
+    Token(TokenValue::RightBrace, no_loc())
+}
+
+pub fn left_paren_tok() -> Token {
+    Token(TokenValue::LeftParen, no_loc())
+}
+
+pub fn right_paren_tok() -> Token {
+    Token(TokenValue::RightParen, no_loc())
+}
+
+pub fn eof_tok() -> Token {
+    Token(TokenValue::Eof, no_loc())
+}

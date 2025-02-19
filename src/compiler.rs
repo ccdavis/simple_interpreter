@@ -76,7 +76,20 @@ impl LanguageParser {
         let look_ahead = self.next_token();
         let (stmt_addr, stmt_type) = match look_ahead.value() {
             TokenValue::Let => self.let_stmt(),
-            TokenValue::Assign => self.assign_stmt(),
+            TokenValue::Ident(ref name) => {
+                self.source.advance();
+                let after_ident = self.next_token();
+                // The identifier might be followed by a '(' : a left hand side function call;
+                // or '[': an index into a collection of some kind; or just an assignment symbol.])
+                match after_ident.value() {
+                    TokenValue::Assign => self.assign_stmt(name, &look_ahead),
+                    // Other paths not implemented yet
+                    _ => {
+                        self.print_error("Syntax error.", &after_ident);
+                        std::process::exit(1);
+                    }
+                }
+            }
             TokenValue::If => self.if_stmt(),
             TokenValue::Output => self.output_stmt(),
             _ => panic!("Statement not implemented! Token was {:?}", &look_ahead),
@@ -92,9 +105,10 @@ impl LanguageParser {
             self.source.advance();
             self.source.consume(&TokenValue::EqualSign);
             let (variable_value, variable_type) = self.expression();
-            let let_addr = self
-                .target
-                .add(Expr::Let(variable_value, variable_type.clone()));
+            let let_addr = self.target.add_with_type(
+                Expr::Let(variable_value, variable_type.clone()),
+                &variable_type,
+            );
             self.symbols.set(self.current_frame, name, let_addr);
             (let_addr, variable_type)
         } else {
@@ -103,8 +117,25 @@ impl LanguageParser {
         }
     }
 
-    fn assign_stmt(&mut self) -> CompileResult {
-        (ExprRef(0), LangType::Unit)
+    fn assign_stmt(&mut self, identifier: &str, id_token: &Token) -> CompileResult {
+        self.source.consume(&TokenValue::Assign);
+        let (variable_value, variable_type) = self.expression();
+        let ste = self.symbols.get(self.current_frame, identifier).clone();
+        if let Some(symbol) = ste {
+            let rhs_type = self.target.get_type(*symbol);
+            if !variable_type.same_as(&rhs_type) {
+                self.print_error("Type mismatch in assignment.", id_token);
+                std::process::exit(1);
+            }
+            let assign_addr = self
+                .target
+                .add(Expr::Assign(symbol.clone(), variable_value));
+            (assign_addr, rhs_type)
+        } else {
+            let msg = format!("Unknown identifier: '{}'", identifier);
+            self.print_error(&msg, id_token);
+            std::process::exit(1);
+        }
     }
 
     fn if_stmt(&mut self) -> CompileResult {
@@ -197,7 +228,10 @@ impl LanguageParser {
                 std::process::exit(1);
             }
 
-            let this_address = self.target.add(Expr::Compare(bool_op, lhs_addr, rhs_addr));
+            let this_address = self.target.add_with_type(
+                Expr::Compare(bool_op, lhs_addr, rhs_addr),
+                &LangType::Boolean,
+            );
             (this_address, LangType::Boolean)
         } else {
             (lhs_addr, expression_type)

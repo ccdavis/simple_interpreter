@@ -70,11 +70,26 @@ impl ExpressionPool {
         if debug(0) {
             println!("{}: Produced {:?}", idx, self.exprs.last().unwrap());
         }
+        self.types.push(LangType::Unresolved);
+        ExprRef(idx.try_into().expect("too many exprs in the pool"))
+    }
+
+    pub fn add_with_type(&mut self, expr: Expr, expr_type: &LangType) -> ExprRef {
+        let idx = self.exprs.len();
+        self.exprs.push(expr);
+        if debug(0) {
+            println!("{}: Produced {:?}", idx, self.exprs.last().unwrap());
+        }
+        self.types.push(expr_type.clone());
         ExprRef(idx.try_into().expect("too many exprs in the pool"))
     }
 
     pub fn update(&mut self, expr_ref: ExprRef, expr: Expr) {
         self.exprs[expr_ref.0 as usize] = expr
+    }
+
+    pub fn get_type(&self, expr_ref: ExprRef) -> LangType {
+        self.types[expr_ref.0 as usize].clone()
     }
 
     pub fn last_exprref(&self) -> ExprRef {

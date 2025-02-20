@@ -146,6 +146,10 @@ pub fn op_tok(o: Op) -> Token {
     Token(TokenValue::Operator(o), no_loc())
 }
 
+pub fn compare_op_tok(o: CompareOp) -> Token {
+    Token(TokenValue::CompareOperator(o), no_loc())
+}
+
 pub fn stmt_terminator_tok() -> Token {
     Token(TokenValue::SemiColon, no_loc())
 }

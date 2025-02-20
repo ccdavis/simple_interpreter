@@ -31,41 +31,101 @@ impl Value {
     pub fn add(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Int(i.wrapping_add(*j)),
-            (Value::Flt(i), Value::Int(j)) => Value::Flt(i + (*j as f64)),
+            (Value::Flt(i), Value::Int(j)) => Value::Flt(*i + (*j as f64)),
             (Value::Int(i), Value::Flt(j)) => Value::Flt(*i as f64 + *j),
-            (Value::Flt(i), Value::Flt(j)) => Value::Flt(i + j),
+            (Value::Flt(i), Value::Flt(j)) => Value::Flt(*i + *j),
             (Value::Str(ref s), Value::Str(ref t)) => Value::Str(s.to_owned() + t),
-            _ => panic!("Invalid operators for '+'"),
+            _ => panic!("Invalid operands for '+'"),
         }
     }
 
     pub fn sub(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Int(i.wrapping_sub(*j)),
-            (Value::Flt(i), Value::Int(j)) => Value::Flt(i - *j as f64),
-            (Value::Int(i), Value::Flt(j)) => Value::Flt(*i as f64 - j),
-            (Value::Flt(i), Value::Flt(j)) => Value::Flt(i - j),
-            _ => panic!("Invalid operators for '+'"),
+            (Value::Flt(i), Value::Int(j)) => Value::Flt(*i - *j as f64),
+            (Value::Int(i), Value::Flt(j)) => Value::Flt(*i as f64 - *j),
+            (Value::Flt(i), Value::Flt(j)) => Value::Flt(*i - *j),
+            _ => panic!("Invalid operands for '+'"),
         }
     }
 
     pub fn div(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Int(i.wrapping_div(*j)),
-            (Value::Flt(i), Value::Int(j)) => Value::Flt(i / *j as f64),
-            (Value::Int(i), Value::Flt(j)) => Value::Flt(*i as f64 / j),
-            (Value::Flt(i), Value::Flt(j)) => Value::Flt(i / j),
-            _ => panic!("Invalid operators for '+'"),
+            (Value::Flt(i), Value::Int(j)) => Value::Flt(*i / *j as f64),
+            (Value::Int(i), Value::Flt(j)) => Value::Flt(*i as f64 / *j),
+            (Value::Flt(i), Value::Flt(j)) => Value::Flt(*i / *j),
+            _ => panic!("Invalid operands for '+'"),
         }
     }
 
     pub fn mul(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Int(i.wrapping_mul(*j)),
-            (Value::Flt(i), Value::Int(j)) => Value::Flt(i * *j as f64),
+            (Value::Flt(i), Value::Int(j)) => Value::Flt(*i * *j as f64),
             (Value::Int(i), Value::Flt(j)) => Value::Flt(*i as f64 * j),
-            (Value::Flt(i), Value::Flt(j)) => Value::Flt(i * j),
-            _ => panic!("Invalid operators for '+'"),
+            (Value::Flt(i), Value::Flt(j)) => Value::Flt(*i * j),
+            _ => panic!("Invalid operands for '+'"),
+        }
+    }
+
+    pub fn less_than(&self, rhs: &Value) -> Value {
+        match (self, rhs) {
+            (Value::Int(i), Value::Int(j)) => Value::Bool(*i < *j),
+            (Value::Flt(i), Value::Int(j)) => Value::Bool(*i < *j as f64),
+            (Value::Int(i), Value::Flt(j)) => Value::Bool(*j > *i as f64),
+            (Value::Flt(i), Value::Flt(j)) => Value::Bool(*i < *j),
+            _ => panic!("Invalid operands for '<'"),
+        }
+    }
+
+    pub fn equal(&self, rhs: &Value) -> Value {
+        match (self, rhs) {
+            (Value::Int(i), Value::Int(j)) => Value::Bool(*i == *j),
+            (Value::Flt(i), Value::Int(j)) => Value::Bool(*i == *j as f64),
+            (Value::Int(i), Value::Flt(j)) => Value::Bool(*j == *i as f64),
+            (Value::Flt(i), Value::Flt(j)) => Value::Bool(*i == *j),
+            _ => panic!("Invalid operands for '<'"),
+        }
+    }
+
+    pub fn not_equal(&self, rhs: &Value) -> Value {
+        match (self, rhs) {
+            (Value::Int(i), Value::Int(j)) => Value::Bool(*i != *j),
+            (Value::Flt(i), Value::Int(j)) => Value::Bool(*i != *j as f64),
+            (Value::Int(i), Value::Flt(j)) => Value::Bool(*j != *i as f64),
+            (Value::Flt(i), Value::Flt(j)) => Value::Bool(*i != *j),
+            _ => panic!("Invalid operands for '<'"),
+        }
+    }
+
+    pub fn greater_than(&self, rhs: &Value) -> Value {
+        match (self, rhs) {
+            (Value::Int(i), Value::Int(j)) => Value::Bool(*i > *j),
+            (Value::Flt(i), Value::Int(j)) => Value::Bool(*i > *j as f64),
+            (Value::Int(i), Value::Flt(j)) => Value::Bool(*j < *i as f64),
+            (Value::Flt(i), Value::Flt(j)) => Value::Bool(*i > *j),
+            _ => panic!("Invalid operands for '<'"),
+        }
+    }
+
+    pub fn greater_than_equal(&self, rhs: &Value) -> Value {
+        match (self, rhs) {
+            (Value::Int(i), Value::Int(j)) => Value::Bool(*i >= *j),
+            (Value::Flt(i), Value::Int(j)) => Value::Bool(*i >= *j as f64),
+            (Value::Int(i), Value::Flt(j)) => Value::Bool(*j <= *i as f64),
+            (Value::Flt(i), Value::Flt(j)) => Value::Bool(*i >= *j),
+            _ => panic!("Invalid operands for '<'"),
+        }
+    }
+
+    pub fn less_than_equal(&self, rhs: &Value) -> Value {
+        match (self, rhs) {
+            (Value::Int(i), Value::Int(j)) => Value::Bool(*i <= *j),
+            (Value::Flt(i), Value::Int(j)) => Value::Bool(*i <= *j as f64),
+            (Value::Int(i), Value::Flt(j)) => Value::Bool(*j >= *i as f64),
+            (Value::Flt(i), Value::Flt(j)) => Value::Bool(*i <= *j),
+            _ => panic!("Invalid operands for '<'"),
         }
     }
 }
@@ -95,6 +155,18 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                     Op::Sub => lhs.sub(rhs),
                     Op::Div => lhs.div(rhs),
                     Op::Mul => lhs.mul(rhs),
+                }
+            }
+            Expr::Compare(op, lhs, rhs) => {
+                let lhs = &state[lhs.0 as usize];
+                let rhs = &state[rhs.0 as usize];
+                match op {
+                    CompareOp::Eq => lhs.equal(rhs),
+                    CompareOp::Ne => lhs.not_equal(rhs),
+                    CompareOp::Lt => lhs.less_than(rhs),
+                    CompareOp::Gt => lhs.greater_than(rhs),
+                    CompareOp::Lte => lhs.less_than_equal(rhs),
+                    CompareOp::Gte => lhs.greater_than_equal(rhs),
                 }
             }
             Expr::LiteralInt(i) => Value::Int(*i),
@@ -161,12 +233,18 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
         if sp > 0 && i == stack[sp - 1].1 {
             // Restore program pointer
             i = stack[sp - 1].0;
+            println!("Restore program pointer to '{}'", i);
             sp -= 1;
+
+            // If the last part of the main program is a statement list, the new program pointer
+            // will point past the end of the program, so we're done.
         } else {
             i = i + 1;
-            if i == pool.size() {
-                break;
-            }
+            println!("Increment program pointer to '{}'", i);
+        }
+        if i == pool.size() {
+            println!("Program complete.");
+            break;
         }
     }
     state[root.0 as usize].clone()
@@ -218,7 +296,7 @@ mod test {
             if_stmt_tok(),
             left_paren_tok(),
             int_tok(5),
-            equals_tok(),
+            compare_op_tok(CompareOp::Eq),
             int_tok(8),
             right_paren_tok(),
             left_brace_tok(),
@@ -232,6 +310,7 @@ mod test {
             assign_tok(),
             int_tok(1),
             right_brace_tok(),
+            eof_tok(),
         ];
         let parsed_code = try_parsing(program);
         let ir = match parsed_code {

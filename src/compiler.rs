@@ -143,10 +143,8 @@ impl LanguageParser {
         self.source.consume(&TokenValue::LeftParen);
         let (cond_addr, cond_et) = self.expression();
         if !matches!(cond_et, LangType::Boolean) {
-            self.print_error(
-                "Must use a boolean type of expression in an if-statement.",
-                &self.next_token(),
-            );
+            let msg = format!("Must use a boolean type of expression in an if-statement condition, but was '{:?}'.",cond_et);
+            self.print_error(&msg, &self.next_token());
             std::process::exit(1);
         }
         self.source.consume(&TokenValue::RightParen);
@@ -217,8 +215,10 @@ impl LanguageParser {
     fn expression(&mut self) -> CompileResult {
         let (lhs_addr, expression_type) = self.simple_expression();
         let look_ahead = self.next_token();
+        println!("Check operator: '{:?}'", &look_ahead.value());
         if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
             self.source.advance();
+            println!("Parsing comparison operator '{:?}'", bool_op);
             let (rhs_addr, rhs_expression_type) = self.simple_expression();
 
             // Some basic type checking
@@ -254,7 +254,9 @@ impl LanguageParser {
         let (lhs_addr, lhs_type) = self.term();
         if matches!(leading_op, Op::Sub) {
             // Insert a -1
-            let negator_addr = self.target.add(Expr::LiteralInt(-1));
+            let negator_addr = self
+                .target
+                .add_with_type(Expr::LiteralInt(-1), &LangType::Integer);
             let reverse_sign_addr = self
                 .target
                 .add(Expr::Binary(Op::Mul, negator_addr, lhs_addr));
@@ -291,9 +293,10 @@ impl LanguageParser {
 
             // Parse the right-hand side and get the type of the argument to 'op'
             let (rhs_addr, rhs_type) = self.factor();
-            let mul_op_addr = self
-                .target
-                .add(Expr::Binary(op.clone(), lhs_addr, rhs_addr));
+            let mul_op_addr = self.target.add_with_type(
+                Expr::Binary(op.clone(), lhs_addr, rhs_addr),
+                &LangType::type_of_expression_parts(&last_factor_type, &rhs_type),
+            );
 
             let (next_part_addr, next_part_type) = self.term_part(mul_op_addr, &rhs_type);
 
@@ -322,13 +325,13 @@ impl LanguageParser {
             if let TokenValue::Operator(ref op) = look_ahead.value() {
                 self.source.advance();
                 let (rhs_addr, rhs_type) = self.term();
-                let term_addr = self
-                    .target
-                    .add(Expr::Binary(op.clone(), lhs_addr, rhs_addr));
-
                 let last_part_type = LangType::type_of_expression_parts(last_lhs_type, &rhs_type);
-                let (next_part_addr, next_part_type) = self.simple_part(term_addr, &last_part_type);
+                let term_addr = self.target.add_with_type(
+                    Expr::Binary(op.clone(), lhs_addr, rhs_addr),
+                    &last_part_type,
+                );
 
+                let (next_part_addr, next_part_type) = self.simple_part(term_addr, &last_part_type);
                 let simple_part_type =
                     LangType::type_of_expression_parts(&next_part_type, &rhs_type);
                 (next_part_addr, simple_part_type)
@@ -344,36 +347,37 @@ impl LanguageParser {
     // AKA "Primary expressions"
     fn factor(&mut self) -> CompileResult {
         let look_ahead = self.next_token();
-        let data_type = match look_ahead.value() {
+        let result: CompileResult = match look_ahead.value() {
             TokenValue::Float(f) => {
-                let expr_addr = self.target.add(Expr::LiteralFloat(*f));
+                let expr_addr = self
+                    .target
+                    .add_with_type(Expr::LiteralFloat(*f), &LangType::Float);
                 self.source.advance();
                 (expr_addr, LangType::Float)
             }
             TokenValue::Integer(i) => {
-                let expr_addr = self.target.add(Expr::LiteralInt(*i));
+                let expr_addr = self
+                    .target
+                    .add_with_type(Expr::LiteralInt(*i), &LangType::Integer);
                 self.source.advance();
                 (expr_addr, LangType::Integer)
             }
             TokenValue::Str(s) => {
-                let expr_addr = self.target.add(Expr::LiteralString(s.clone()));
+                let expr_addr = self
+                    .target
+                    .add_with_type(Expr::LiteralString(s.clone()), &LangType::String);
                 self.source.advance();
                 (expr_addr, LangType::String)
             }
             TokenValue::Ident(name) => {
                 let ste = self.symbols.get(self.current_frame, name).clone();
                 if let Some(value_storage) = ste {
-                    let call_addr = self.target.add(Expr::Call(*value_storage));
+                    let declared_type = self.target.get_type(*value_storage);
+                    let call_addr = self
+                        .target
+                        .add_with_type(Expr::Call(*value_storage), &declared_type);
                     self.source.advance();
-
-                    // get type of the referenced value
-                    let orig_expr: &Expr = self.target.get(*value_storage);
-                    let call_type = if let Expr::Let(_, data_type) = orig_expr {
-                        data_type.clone()
-                    } else {
-                        panic!("Internal parser error. A call to '{}' has a reference to  something other than a 'let' statement.", &name );
-                    };
-                    (call_addr, call_type)
+                    (call_addr, declared_type)
                 } else {
                     let msg = format!("Undeclared identifier '{}'", name);
                     self.print_error(&msg, &look_ahead);
@@ -399,8 +403,9 @@ impl LanguageParser {
                 std::process::exit(1);
             }
         };
+        println!("Parsed factor: '{:?}'", &result);
 
-        data_type
+        result
     }
 } // impl
 

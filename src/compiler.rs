@@ -91,6 +91,7 @@ impl LanguageParser {
                 }
             }
             TokenValue::If => self.if_stmt(),
+            TokenValue::For => self.for_stmt(),
             TokenValue::Output => self.output_stmt(),
             _ => panic!("Statement not implemented! Token was {:?}", &look_ahead),
         };
@@ -194,6 +195,23 @@ impl LanguageParser {
             self.target.update(if_stmt_addr, completed_if);
         }
         (if_stmt_addr, then_type)
+    }
+
+    pub fn for_stmt(&mut self) -> CompileResult {
+        self.source.consume(&TokenValue::For);
+        self.source.consume(&TokenValue::LeftParen);
+        // This form of 'for' functions like a 'while' loop.
+        let (cond_addr, _cond_type) = self.expression();
+        // Other forms of 'for' can have three expressions: index, in low_exp to high_exp
+        self.source.consume(&TokenValue::RightParen);
+        let for_stmt_addr = self.target.add(Expr::For(cond_addr, ExprRef(0)));
+
+        self.source.consume(&TokenValue::LeftBrace);
+        let (loop_addr, loop_type) = self.statement_list();
+        self.source.consume(&TokenValue::RightBrace);
+        self.target
+            .update(for_stmt_addr, Expr::For(cond_addr, loop_addr));
+        (for_stmt_addr, loop_type)
     }
 
     fn output_stmt(&mut self) -> CompileResult {

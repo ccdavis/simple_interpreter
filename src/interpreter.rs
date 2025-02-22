@@ -200,6 +200,9 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                 }
                 continue;
             }
+            Expr::For(cond_addr, loop_addr) => match &state[cond_addr.0 as usize] {
+                _ => panic!("not implemented"),
+            },
             Expr::If(cond, conditional_branch, skip_branch) => {
                 match &state[cond.0 as usize] {
                     Value::Bool(c) => {
@@ -282,6 +285,43 @@ mod test {
         pool.add(Expr::Call(ExprRef(2)));
         pool.add(Expr::Output(ExprRef(3), LangType::Integer));
         let result = run(&pool, ExprRef(0));
+        assert!(matches!(result, Value::None));
+    }
+
+    #[test]
+    fn test_for_loop() {
+        let program = vec![
+            let_stmt_tok(),
+            ident_tok("a"),
+            equals_tok(),
+            int_tok(0),
+            stmt_terminator_tok(),
+            for_stmt_tok(),
+            left_paren_tok(),
+            ident_tok("a");
+            compare_op_tok(CompareOp::Lt),
+            int_tok(8),
+            right_paren_tok(),
+            left_brace_tok(),
+            ident_tok("a"),
+            assign_tok(), // :=
+            ident_tok("a"),
+            op_tok(Operator::Add),
+            int_tok(1),
+            stmt_terminator_tok(),
+            output_tok(),
+            ident_tok("a"),
+            right_brace_tok(),
+            eof_tok(),
+        ];
+        let parsed_code = try_parsing(program);
+        let ir = match parsed_code {
+            Err(e) => {
+                panic!("Failed to parse test program: {}", &e);
+            }
+            Ok(code) => code,
+        };
+        let result = run(&ir, ExprRef(0));
         assert!(matches!(result, Value::None));
     }
 

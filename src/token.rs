@@ -130,6 +130,10 @@ pub fn output_tok() -> Token {
     Token(TokenValue::Output, no_loc())
 }
 
+pub fn for_stmt_tok() -> Token {
+    Token(TokenValue::For, no_loc())
+}
+
 pub fn int_tok(n: i64) -> Token {
     Token(TokenValue::Integer(n), no_loc())
 }

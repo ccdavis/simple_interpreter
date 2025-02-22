@@ -1,10 +1,10 @@
 use super::expression::{Expr, ExprRef, ExpressionPool};
 use super::token::{CompareOp, Op};
-use super::types::LangType;
+
 use std::fmt;
 
 #[derive(Clone)]
-enum Value {
+pub enum Value {
     Int(i64),
     Flt(f64),
     Str(String),
@@ -130,6 +130,17 @@ impl Value {
     }
 }
 
+
+pub fn skip_statements(pool: &ExpressionPool, expr_ref: &ExprRef) -> usize {
+    match &pool.exprs[expr_ref.0 as usize] {
+        Expr::StmtList(_head, ref tail) => {
+            tail.0 as usize
+        }
+        _ => panic!("Internal error: Can't skip any expression other than a statement-list."),
+    }
+
+}
+
 pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
     let mut state: Vec<Value> = vec![Value::None; pool.size()];
     let mut stack = vec![(0 as usize, 0 as usize); 100];
@@ -139,7 +150,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
     let mut i: usize = 0;
     loop {
         let expr = &pool.exprs[i];
-        println!("Execute: {:?}", &expr);
+        println!("{}:  Execute {:?}", i, &expr);
         let result = match expr {
             Expr::Output(value_addr, _) => {
                 println!("{}", &state[value_addr.0 as usize]);
@@ -149,7 +160,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             // from evaluating some literals first by the time operations are reached.
             Expr::Binary(op, lhs, rhs) => {
                 let lhs = &state[lhs.0 as usize];
-                let rhs = &state[rhs.0 as usize];
+                let rhs = &state[rhs.0 as usize];                
                 match op {
                     Op::Add => lhs.add(rhs),
                     Op::Sub => lhs.sub(rhs),
@@ -160,6 +171,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             Expr::Compare(op, lhs, rhs) => {
                 let lhs = &state[lhs.0 as usize];
                 let rhs = &state[rhs.0 as usize];
+                println!("Compare {} {:?} {}",lhs, op, rhs);
                 match op {
                     CompareOp::Eq => lhs.equal(rhs),
                     CompareOp::Ne => lhs.not_equal(rhs),
@@ -177,12 +189,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                 let initial_value = &state[assigned_value.0 as usize];
                 // TODO: You could put a runtime type-check here
                 initial_value.clone()
-            }
-            Expr::Assign(lhs, rhs) => {
-                // TODO you could put a runtime type-check here
-                state[lhs.0 as usize] = state[rhs.0 as usize].clone();
-                Value::None
-            }
+            }            
             Expr::Call(storage_addr) => state[storage_addr.0 as usize].clone(),
             Expr::Assign(lhs, rhs) => {
                 state[lhs.0 as usize] = state[rhs.0 as usize].clone();
@@ -193,15 +200,40 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                 // and so when  completing the list we have to pop the stack, and change control to the value
                 // stored on the top. That is done elsewhere.
                 if sp > 0 {
-                    stack[sp - 1].1 = finish.0 as usize;
-                    i = start.0 as usize;
-                } else {
-                    i += 1;
+                    println!("Enter statement liststarting at {}, {}", i+1, finish.0);
+                    // 'start' is where the first statement value will be placed, likewise with 'finish' for the last.
+                    // The code to execute however begins immediately after the location of the statement list
+                    // The 'finish' address is used to check the counter 'i and know when the statement list is done.
+                    stack[sp-1].1 = finish.0 as usize  ;                    
                 }
+                i += 1;
                 continue;
             }
-            Expr::For(cond_addr, loop_addr) => match &state[cond_addr.0 as usize] {
-                _ => panic!("not implemented"),
+            Expr::For(cond_addr, loop_addr) =>{
+                 match &state[cond_addr.0 as usize] {
+                    Value::Bool(b) => {                                                    
+                        if *b {                            
+                            println!("Enter for loop");
+                            sp += 1;
+                            // When in a statement-list (sp>0) we restore the program pointer
+                            // to  stack[sp-1].0. In a loop we need to jump back to the conditional
+                            // expression to re-evaluate to decide if we re-enter the statements or not.
+                            // The second number in the tuple will be set to the address  of the last
+                            // statement in the list as we evaluate the statement list.
+                            stack[sp - 1] = (cond_addr.0 as usize, 0);
+                            // enter the loop
+                            i += 1; // The statement-list expr is here
+                            continue;
+                        } else {
+                            
+                            // Jump past the loop's statements                            
+                            i = skip_statements(pool, loop_addr);
+                            println!("Finished withfor loop, skip to {}", i);
+                            continue;
+                        }
+                    }
+                    _ => panic!("Single for-expression must be boolean."),
+                 }                
             },
             Expr::If(cond, conditional_branch, skip_branch) => {
                 match &state[cond.0 as usize] {
@@ -233,9 +265,9 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
 
         // Did we reach the end of the current scope? The .1 part of the stack frame tuple has the 'finish' address.
         // The .0 part has the caller's address.
-        if sp > 0 && i == stack[sp - 1].1 {
+        if sp > 0 && i == stack[sp-1].1 {
             // Restore program pointer
-            i = stack[sp - 1].0;
+            i = stack[sp-1].0;
             println!("Restore program pointer to '{}'", i);
             sp -= 1;
 
@@ -255,9 +287,14 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
 
 #[cfg(test)]
 mod test {
-    use super::super::token::*;
+    use super::super::token::*;    
     use super::super::LanguageParser;
-    use super::*;
+    use super::super::expression::ExprRef;
+    use super::super::expression::Expr;
+    use super::super::expression::ExpressionPool;
+    use super::super::interpreter::*;    
+    use super::super::types::LangType;
+
 
     #[test]
     fn test_interpret_simple_stmt() {
@@ -298,7 +335,7 @@ mod test {
             stmt_terminator_tok(),
             for_stmt_tok(),
             left_paren_tok(),
-            ident_tok("a");
+            ident_tok("a"),
             compare_op_tok(CompareOp::Lt),
             int_tok(8),
             right_paren_tok(),
@@ -306,7 +343,7 @@ mod test {
             ident_tok("a"),
             assign_tok(), // :=
             ident_tok("a"),
-            op_tok(Operator::Add),
+            op_tok(Op::Add),
             int_tok(1),
             stmt_terminator_tok(),
             output_tok(),
@@ -314,6 +351,7 @@ mod test {
             right_brace_tok(),
             eof_tok(),
         ];
+        println!("----------------------- for loop test --------------------------------");
         let parsed_code = try_parsing(program);
         let ir = match parsed_code {
             Err(e) => {
@@ -372,6 +410,7 @@ mod test {
             .expect("Error during parsing.");
         assert!(expr_pool.size() > 0);
         let result = run(&expr_pool, ExprRef(0));
+        assert!(matches!(result, Value::None));
     }
 
     fn program1_tokens() -> Vec<Token> {

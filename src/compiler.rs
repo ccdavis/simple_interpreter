@@ -232,11 +232,9 @@ impl LanguageParser {
 
     fn expression(&mut self) -> CompileResult {
         let (lhs_addr, expression_type) = self.simple_expression();
-        let look_ahead = self.next_token();
-        println!("Check operator: '{:?}'", &look_ahead.value());
+        let look_ahead = self.next_token();        
         if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
             self.source.advance();
-            println!("Parsing comparison operator '{:?}'", bool_op);
             let (rhs_addr, rhs_expression_type) = self.simple_expression();
 
             // Some basic type checking
@@ -391,11 +389,11 @@ impl LanguageParser {
                 let ste = self.symbols.get(self.current_frame, name).clone();
                 if let Some(value_storage) = ste {
                     let declared_type = self.target.get_type(*value_storage);
-                    let call_addr = self
+                    let _call_addr = self
                         .target
                         .add_with_type(Expr::Call(*value_storage), &declared_type);
                     self.source.advance();
-                    (call_addr, declared_type)
+                    (*value_storage, declared_type)
                 } else {
                     let msg = format!("Undeclared identifier '{}'", name);
                     self.print_error(&msg, &look_ahead);

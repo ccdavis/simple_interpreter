@@ -67,7 +67,7 @@ impl ExpressionPool {
     pub fn add(&mut self, expr: Expr) -> ExprRef {
         let idx = self.exprs.len();
         self.exprs.push(expr);
-        if debug(0) {
+        if debug(1) {
             println!("{}: Produced {:?}", idx, self.exprs.last().unwrap());
         }
         self.types.push(LangType::Unresolved);
@@ -77,7 +77,7 @@ impl ExpressionPool {
     pub fn add_with_type(&mut self, expr: Expr, expr_type: &LangType) -> ExprRef {
         let idx = self.exprs.len();
         self.exprs.push(expr);
-        if debug(0) {
+        if debug(1) {
             println!("{}: Produced {:?}", idx, self.exprs.last().unwrap());
         }
         self.types.push(expr_type.clone());

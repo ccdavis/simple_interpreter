@@ -130,15 +130,11 @@ impl Value {
     }
 }
 
-
 pub fn skip_statements(pool: &ExpressionPool, expr_ref: &ExprRef) -> usize {
     match &pool.exprs[expr_ref.0 as usize] {
-        Expr::StmtList(_head, ref tail) => {
-            tail.0 as usize
-        }
+        Expr::StmtList(_head, ref tail) => tail.0 as usize,
         _ => panic!("Internal error: Can't skip any expression other than a statement-list."),
     }
-
 }
 
 pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
@@ -153,14 +149,16 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
         println!("{}:  Execute {:?}", i, &expr);
         let result = match expr {
             Expr::Output(value_addr, _) => {
-                println!("{}", &state[value_addr.0 as usize]);
-                Value::None
-            }
+                let value =  &state[value_addr.0 as usize];
+                println!("{}", value);
+                // This is mostly for diagnostics; normally the result of 'output' would be ignored.
+                value.clone()
+            },
             // This won't be matched first; 'state' will have been populated
             // from evaluating some literals first by the time operations are reached.
             Expr::Binary(op, lhs, rhs) => {
                 let lhs = &state[lhs.0 as usize];
-                let rhs = &state[rhs.0 as usize];                
+                let rhs = &state[rhs.0 as usize];
                 match op {
                     Op::Add => lhs.add(rhs),
                     Op::Sub => lhs.sub(rhs),
@@ -171,7 +169,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             Expr::Compare(op, lhs, rhs) => {
                 let lhs = &state[lhs.0 as usize];
                 let rhs = &state[rhs.0 as usize];
-                println!("Compare {} {:?} {}",lhs, op, rhs);
+                println!("Compare {} {:?} {}", lhs, op, rhs);
                 match op {
                     CompareOp::Eq => lhs.equal(rhs),
                     CompareOp::Ne => lhs.not_equal(rhs),
@@ -189,7 +187,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                 let initial_value = &state[assigned_value.0 as usize];
                 // TODO: You could put a runtime type-check here
                 initial_value.clone()
-            }            
+            }
             Expr::Call(storage_addr) => state[storage_addr.0 as usize].clone(),
             Expr::Assign(lhs, rhs) => {
                 state[lhs.0 as usize] = state[rhs.0 as usize].clone();
@@ -200,19 +198,19 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                 // and so when  completing the list we have to pop the stack, and change control to the value
                 // stored on the top. That is done elsewhere.
                 if sp > 0 {
-                    println!("Enter statement liststarting at {}, {}", i+1, finish.0);
+                    println!("Enter statement liststarting at {}, {}", i + 1, finish.0);
                     // 'start' is where the first statement value will be placed, likewise with 'finish' for the last.
                     // The code to execute however begins immediately after the location of the statement list
                     // The 'finish' address is used to check the counter 'i and know when the statement list is done.
-                    stack[sp-1].1 = finish.0 as usize  ;                    
+                    stack[sp - 1].1 = finish.0 as usize;
                 }
                 i += 1;
                 continue;
             }
-            Expr::For(cond_addr, loop_addr) =>{
-                 match &state[cond_addr.0 as usize] {
-                    Value::Bool(b) => {                                                    
-                        if *b {                            
+            Expr::For(cond_addr, loop_addr) => {
+                match &state[cond_addr.0 as usize] {
+                    Value::Bool(b) => {
+                        if *b {
                             println!("Enter for loop");
                             sp += 1;
                             // When in a statement-list (sp>0) we restore the program pointer
@@ -225,16 +223,15 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                             i += 1; // The statement-list expr is here
                             continue;
                         } else {
-                            
-                            // Jump past the loop's statements                            
+                            // Jump past the loop's statements
                             i = skip_statements(pool, loop_addr);
                             println!("Finished withfor loop, skip to {}", i);
                             continue;
                         }
                     }
                     _ => panic!("Single for-expression must be boolean."),
-                 }                
-            },
+                }
+            }
             Expr::If(cond, conditional_branch, skip_branch) => {
                 match &state[cond.0 as usize] {
                     Value::Bool(c) => {
@@ -265,9 +262,9 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
 
         // Did we reach the end of the current scope? The .1 part of the stack frame tuple has the 'finish' address.
         // The .0 part has the caller's address.
-        if sp > 0 && i == stack[sp-1].1 {
+        if sp > 0 && i == stack[sp - 1].1 {
             // Restore program pointer
-            i = stack[sp-1].0;
+            i = stack[sp - 1].0;
             println!("Restore program pointer to '{}'", i);
             sp -= 1;
 
@@ -282,19 +279,18 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             break;
         }
     }
-    state[root.0 as usize].clone()
+    state[i -1].clone()
 }
 
 #[cfg(test)]
 mod test {
-    use super::super::token::*;    
-    use super::super::LanguageParser;
-    use super::super::expression::ExprRef;
     use super::super::expression::Expr;
+    use super::super::expression::ExprRef;
     use super::super::expression::ExpressionPool;
-    use super::super::interpreter::*;    
+    use super::super::interpreter::*;
+    use super::super::token::*;
     use super::super::types::LangType;
-
+    use super::super::LanguageParser;
 
     #[test]
     fn test_interpret_simple_stmt() {
@@ -310,7 +306,7 @@ mod test {
         assert_eq!(3, pool.size());
         println!("Run program...");
         let result = run(&pool, ExprRef(0));
-        assert!(matches!(result, Value::None));
+        assert_eq!("99",&result.to_string()); 
     }
 
     #[test]
@@ -322,7 +318,7 @@ mod test {
         pool.add(Expr::Call(ExprRef(2)));
         pool.add(Expr::Output(ExprRef(3), LangType::Integer));
         let result = run(&pool, ExprRef(0));
-        assert!(matches!(result, Value::None));
+        assert_eq!("5", &result.to_string());        
     }
 
     #[test]
@@ -360,7 +356,9 @@ mod test {
             Ok(code) => code,
         };
         let result = run(&ir, ExprRef(0));
-        assert!(matches!(result, Value::None));
+        assert_eq!("8",&format!("{}", result));
+
+        
     }
 
     #[test]
@@ -410,7 +408,7 @@ mod test {
             .expect("Error during parsing.");
         assert!(expr_pool.size() > 0);
         let result = run(&expr_pool, ExprRef(0));
-        assert!(matches!(result, Value::None));
+        assert_eq!("0", &result.to_string());        
     }
 
     fn program1_tokens() -> Vec<Token> {

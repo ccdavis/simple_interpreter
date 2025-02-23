@@ -232,7 +232,7 @@ impl LanguageParser {
 
     fn expression(&mut self) -> CompileResult {
         let (lhs_addr, expression_type) = self.simple_expression();
-        let look_ahead = self.next_token();        
+        let look_ahead = self.next_token();
         if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
             self.source.advance();
             let (rhs_addr, rhs_expression_type) = self.simple_expression();

@@ -149,11 +149,11 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
         println!("{}:  Execute {:?}", i, &expr);
         let result = match expr {
             Expr::Output(value_addr, _) => {
-                let value =  &state[value_addr.0 as usize];
+                let value = &state[value_addr.0 as usize];
                 println!("{}", value);
                 // This is mostly for diagnostics; normally the result of 'output' would be ignored.
                 value.clone()
-            },
+            }
             // This won't be matched first; 'state' will have been populated
             // from evaluating some literals first by the time operations are reached.
             Expr::Binary(op, lhs, rhs) => {
@@ -279,7 +279,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             break;
         }
     }
-    state[i -1].clone()
+    state[i - 1].clone()
 }
 
 #[cfg(test)]
@@ -306,7 +306,7 @@ mod test {
         assert_eq!(3, pool.size());
         println!("Run program...");
         let result = run(&pool, ExprRef(0));
-        assert_eq!("99",&result.to_string()); 
+        assert_eq!("99", &result.to_string());
     }
 
     #[test]
@@ -318,7 +318,7 @@ mod test {
         pool.add(Expr::Call(ExprRef(2)));
         pool.add(Expr::Output(ExprRef(3), LangType::Integer));
         let result = run(&pool, ExprRef(0));
-        assert_eq!("5", &result.to_string());        
+        assert_eq!("5", &result.to_string());
     }
 
     #[test]
@@ -356,9 +356,7 @@ mod test {
             Ok(code) => code,
         };
         let result = run(&ir, ExprRef(0));
-        assert_eq!("8",&format!("{}", result));
-
-        
+        assert_eq!("8", &format!("{}", result));
     }
 
     #[test]
@@ -408,7 +406,7 @@ mod test {
             .expect("Error during parsing.");
         assert!(expr_pool.size() > 0);
         let result = run(&expr_pool, ExprRef(0));
-        assert_eq!("0", &result.to_string());        
+        assert_eq!("0", &result.to_string());
     }
 
     fn program1_tokens() -> Vec<Token> {

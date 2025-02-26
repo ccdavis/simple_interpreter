@@ -2,6 +2,7 @@
 pub mod compiler;
 pub mod expression;
 pub mod interpreter;
+pub mod lex;
 pub mod parser;
 pub mod symbols;
 pub mod token;

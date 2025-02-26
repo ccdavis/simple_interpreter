@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::fmt;
+
 #[derive(Debug, Clone)]
 pub struct TokenLocation {
     pub line: usize,
@@ -5,38 +8,10 @@ pub struct TokenLocation {
     pub column_end: usize,
 }
 
-// Op is shared between tokens and expressions -- they exactly match token types
-// and types of operations in expressions.
-#[derive(Debug, Clone, PartialEq)]
-pub enum Op {
-    Add,
-    Sub,
-    Mul,
-    Div,
-}
-
-impl Op {
-    // Convenience for deciding on classes of operators, mainly for determining precedence.
-    pub fn is_mul_op(&self) -> bool {
-        matches!(*self, Self::Mul) || matches!(*self, Self::Div)
-    }
-
-    pub fn is_add_op(&self) -> bool {
-        matches!(*self, Self::Add) || matches!(*self, Self::Sub)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CompareOp {
-    Gt,
-    Lt,
-    Ne,
-    Eq,
-    Lte,
-    Gte,
-}
-
 #[derive(Debug, Clone)]
+pub struct Token(pub TokenValue, pub TokenLocation);
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenValue {
     // user names for things
     Ident(String),
@@ -45,6 +20,7 @@ pub enum TokenValue {
     Integer(i64),
     Float(f64),
     Str(String),
+    Bool(bool),
 
     // Any data operations
     Operator(Op),
@@ -64,14 +40,118 @@ pub enum TokenValue {
     RightParen,
     EqualSign,
     SemiColon,
+    Colon,
+    At,
+    Dot,
+    DotDot,
     Comma,
     LeftBrace,
     RightBrace,
+    Comment(String),
     Eof,
 }
 
-#[derive(Debug, Clone)]
-pub struct Token(pub TokenValue, pub TokenLocation);
+static RESERVED_WORDS: &'static [TokenValue] = &[
+    TokenValue::Output,
+    TokenValue::Input,
+    TokenValue::If,
+    TokenValue::Let,
+    TokenValue::Else,
+    TokenValue::For,
+];
+
+pub fn reserved_words_lookup() -> HashMap<String, TokenValue> {
+    let mut lookup = HashMap::new();
+    for tv in RESERVED_WORDS {
+        lookup.insert(tv.to_string(), tv.clone());
+    }
+    lookup
+}
+
+// Op is shared between tokens and expressions -- they exactly match token types
+// and types of operations in expressions.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Op {
+    Add,
+    Sub,
+    Mul,
+    Div,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum CompareOp {
+    Gt,
+    Lt,
+    Ne,
+    Eq,
+    Lte,
+    Gte,
+}
+
+impl fmt::Display for TokenValue {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Ident(n) => write!(f, "{}", &n),
+            Self::Integer(i) => write!(f, "{}", i),
+            Self::Float(flt) => write!(f, "{}", flt),
+            Self::Str(s) => write!(f, "\"{}\"", &s),
+            Self::Bool(b) => write!(f, "{}", b),
+            Self::Operator(op) => write!(f, "{}", &op),
+            Self::CompareOp(op) => write!(f, "{}", &op),
+            Self::Output => write!(f, "output"),
+            Self::Input => write!(f, "input"),
+            Self::If => write!(f, "if"),
+            Self::Else => write!(f, "else"),
+            Self::Let => write!(f, "let"),
+            Self::Assign => write!(f, ":="),
+            Self::For => write!(f, "for"),
+            Self::LeftParen => write!(f, "("),
+            Self::RightParen => write!(f, ")"),
+            Self::EqualSign => write!(f, "="),
+            Self::SemiColon => write!(f, ";"),
+            Self::Comma => write!(f, ","),
+            Self::LeftBrace => write!(f, "{{"),
+            Self::RightBrace => write!(f, "}}"),
+            Self::Comment(c) => write!(f, "# {}", &c),
+            Self::Eof => write!(f, "EOF"),
+        }
+    }
+}
+
+impl Op {
+    // Convenience for deciding on classes of operators, mainly for determining precedence.
+    pub fn is_mul_op(&self) -> bool {
+        matches!(*self, Self::Mul) || matches!(*self, Self::Div)
+    }
+
+    pub fn is_add_op(&self) -> bool {
+        matches!(*self, Self::Add) || matches!(*self, Self::Sub)
+    }
+}
+
+impl fmt::Display for Op {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Add => write!(f, "+"),
+            Self::Sub => write!(f, "-"),
+            Self::Div => write!(f, "/"),
+            Self::Mul => write!(f, "*"),
+        }
+    }
+}
+
+impl fmt::Display for CompareOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Lt => write!(f, "<"),
+            Self::Gt => write!(f, ">"),
+            Self::Eq => write!(f, "="),
+            Self::Ne => write!(f, "<>"),
+            Self::Lte => write!(f, "<="),
+            Self::Gte => write!(f, ">="),
+        }
+    }
+}
 
 impl Token {
     pub fn value(&self) -> &TokenValue {

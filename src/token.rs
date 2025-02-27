@@ -38,7 +38,6 @@ pub enum TokenValue {
     // Symbols
     LeftParen,
     RightParen,
-    EqualSign,
     SemiColon,
     Colon,
     At,
@@ -107,7 +106,6 @@ impl fmt::Display for TokenValue {
             Self::For => write!(f, "for"),
             Self::LeftParen => write!(f, "("),
             Self::RightParen => write!(f, ")"),
-            Self::EqualSign => write!(f, "="),
             Self::SemiColon => write!(f, ";"),
             Self::Comma => write!(f, ","),
             Self::LeftBrace => write!(f, "{{"),
@@ -247,7 +245,7 @@ pub fn let_stmt_tok() -> Token {
 }
 
 pub fn equals_tok() -> Token {
-    Token(TokenValue::EqualSign, no_loc())
+    Token(TokenValue::CompareOperator(CompareOp::Eq), no_loc())
 }
 
 pub fn assign_tok() -> Token {

@@ -104,7 +104,7 @@ impl LanguageParser {
         let look_ahead = self.next_token();
         if let TokenValue::Ident(ref name) = look_ahead.value() {
             self.source.advance();
-            self.source.consume(&TokenValue::EqualSign);
+            self.source.consume(&TokenValue::Assign);
             let (variable_value, variable_type) = self.expression();
             let let_addr = self.target.add_with_type(
                 Expr::Let(variable_value, variable_type.clone()),
@@ -234,6 +234,7 @@ impl LanguageParser {
         let (lhs_addr, expression_type) = self.simple_expression();
         let look_ahead = self.next_token();
         if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
+            println!("Parsing compare operation {:?}", &bool_op);
             self.source.advance();
             let (rhs_addr, rhs_expression_type) = self.simple_expression();
 
@@ -470,7 +471,7 @@ mod test {
         let code = vec![
             let_stmt_tok(),
             ident_tok("a"),
-            equals_tok(),
+            assign_tok(),
             int_tok(8),
             eof_tok(),
         ];

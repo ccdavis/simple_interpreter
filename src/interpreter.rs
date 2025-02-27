@@ -326,7 +326,7 @@ mod test {
         let program = vec![
             let_stmt_tok(),
             ident_tok("a"),
-            equals_tok(),
+            assign_tok(),
             int_tok(0),
             stmt_terminator_tok(),
             for_stmt_tok(),
@@ -364,7 +364,7 @@ mod test {
         let program = vec![
             let_stmt_tok(),
             ident_tok("a"),
-            equals_tok(),
+            assign_tok(),
             int_tok(0),
             stmt_terminator_tok(),
             if_stmt_tok(),
@@ -399,7 +399,23 @@ mod test {
 
     #[test]
     fn test_end_to_end_program() {
+        println!("In end to end program test");
         let code = program1_tokens();
+        let mut language_parser = LanguageParser::new(code);
+        let expr_pool = language_parser
+            .parse_program()
+            .expect("Error during parsing.");
+        assert!(expr_pool.size() > 0);
+        let result = run(&expr_pool, ExprRef(0));
+        assert_eq!("0", &result.to_string());
+    }
+
+    use super::super::lex::Scanner;
+    #[test]
+    fn test_parse_and_interpret() {
+        let program = "let a := 2;\n let result := 12;\n a := a + 1; if (a = 2){ result := 99} else {result := 0}; output result";
+        let mut s = Scanner::new(program);
+        let code = s.tokenize();
         let mut language_parser = LanguageParser::new(code);
         let expr_pool = language_parser
             .parse_program()

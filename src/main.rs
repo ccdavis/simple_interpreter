@@ -28,20 +28,25 @@ pub fn run(code: Vec<Token>) {
     println!("Final value: {}", &value);
 }
 
-fn main() {
-    let text = "let a:=1;
-                        let b:=1;
-                        if (a = 1) { b:=9} else { b:=0};
-                        output b;
-                        for (a < 25) {
-                            b:= b + 3;
-                            a := a + 1
-                       };
-                       output a;
-                       output b
-                        ";
+use std::fs;
 
-    let mut scanner = lex::Scanner::new(text);
-    let code = scanner.tokenize();
-    run(code);
+fn main() {    
+    let args: Vec<String> = std::env::args().collect();
+    let filename = match args.get(1){
+        Some(filename) => filename.clone(),
+        None => {
+            eprintln!("Supply a file name as the first argument to the interpreter.");
+            std::process::exit(1);
+        }
+    };
+    let code = match fs::read_to_string(filename) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("Error reading input file: '{}'",e);
+            std::process::exit(1);
+        }
+    };
+    let mut scanner = lex::Scanner::new(&code);
+    let tokens = scanner.tokenize();
+    run(tokens);
 }

@@ -93,10 +93,22 @@ impl LanguageParser {
             TokenValue::If => self.if_stmt(),
             TokenValue::For => self.for_stmt(),
             TokenValue::Output => self.output_stmt(),
-            _ => panic!("Statement not implemented! Token was {:?}", &look_ahead),
+            _ =>  {
+                if look_ahead.same_type(&TokenValue::RightBrace) {
+                    self.empty_stmt()
+                } else {
+                    self.print_error("Parse error on statement.", &look_ahead);
+                    std::process::exit(1);
+                }
+            }                        
         };
 
         (stmt_addr, stmt_type)
+    }
+
+    fn empty_stmt(&mut self) -> CompileResult {
+        let addr = self.target.add_with_type(Expr::Unit, &LangType::Unit);
+        (addr, LangType::Unit)
     }
 
     fn let_stmt(&mut self) -> CompileResult {

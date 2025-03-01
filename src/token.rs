@@ -21,6 +21,7 @@ pub enum TokenValue {
     Float(f64),
     Str(String),
     Bool(bool),
+    Unit,
 
     // Any data operations
     Operator(Op),
@@ -47,6 +48,7 @@ pub enum TokenValue {
     LeftBrace,
     RightBrace,
     Comment(String),
+
     Eof,
 }
 
@@ -95,6 +97,7 @@ impl fmt::Display for TokenValue {
             Self::Float(flt) => write!(f, "{}", flt),
             Self::Str(s) => write!(f, "\"{}\"", &s),
             Self::Bool(b) => write!(f, "{}", b),
+            Self::Unit => write!(f, "()"),
             Self::Operator(op) => write!(f, "{}", &op),
             Self::CompareOperator(op) => write!(f, "{}", &op),
             Self::Output => write!(f, "output"),

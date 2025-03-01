@@ -3,6 +3,8 @@ use super::token::{CompareOp, Op};
 
 use std::fmt;
 
+const DEBUG:bool = false;
+
 #[derive(Clone)]
 pub enum Value {
     Int(i64),
@@ -138,6 +140,7 @@ pub fn skip_statements(pool: &ExpressionPool, expr_ref: &ExprRef) -> usize {
 }
 
 pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
+    let mut instruction_counter = 0;
     let mut state: Vec<Value> = vec![Value::None; pool.size()];
     let mut stack = vec![(0 as usize, 0 as usize); 100];
     let mut sp = 0 as usize;
@@ -145,9 +148,11 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
     //for (i, expr) in pool.exprs.iter().enumerate() {
     let mut i: usize = 0;
     loop {
+        instruction_counter+=1;
         let expr = &pool.exprs[i];
-        println!("{}:  Execute {:?}", i, &expr);
+        if DEBUG {println!("{}:  Execute {:?}", i, &expr);}
         let result = match expr {
+            Expr::Unit => Value::None,
             Expr::Output(value_addr, _) => {
                 let value = &state[value_addr.0 as usize];
                 println!("{}", value);
@@ -168,8 +173,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             }
             Expr::Compare(op, lhs, rhs) => {
                 let lhs = &state[lhs.0 as usize];
-                let rhs = &state[rhs.0 as usize];
-                println!("Compare {} {:?} {}", lhs, op, rhs);
+                let rhs = &state[rhs.0 as usize];                
                 match op {
                     CompareOp::Eq => lhs.equal(rhs),
                     CompareOp::Ne => lhs.not_equal(rhs),
@@ -198,7 +202,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                 // and so when  completing the list we have to pop the stack, and change control to the value
                 // stored on the top. That is done elsewhere.
                 if sp > 0 {
-                    println!("Enter statement liststarting at {}, {}", i + 1, finish.0);
+                    if DEBUG {println!("Enter statement liststarting at {}, {}", i + 1, finish.0);}
                     // 'start' is where the first statement value will be placed, likewise with 'finish' for the last.
                     // The code to execute however begins immediately after the location of the statement list
                     // The 'finish' address is used to check the counter 'i and know when the statement list is done.
@@ -211,7 +215,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                 match &state[cond_addr.0 as usize] {
                     Value::Bool(b) => {
                         if *b {
-                            println!("Enter for loop");
+                            if DEBUG {println!("Enter for loop");}
                             sp += 1;
                             // When in a statement-list (sp>0) we restore the program pointer
                             // to  stack[sp-1].0. In a loop we need to jump back to the conditional
@@ -225,7 +229,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                         } else {
                             // Jump past the loop's statements
                             i = skip_statements(pool, loop_addr);
-                            println!("Finished withfor loop, skip to {}", i);
+                            if DEBUG {println!("Finished withfor loop, skip to {}", i);}
                             continue;
                         }
                     }
@@ -258,27 +262,28 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             _ => panic!("not implemented"),
         };
         state[i] = result;
-        println!("{}: value: {}", i, &state[i]);
+        if DEBUG {println!("{}: value: {}", i, &state[i]);}
 
         // Did we reach the end of the current scope? The .1 part of the stack frame tuple has the 'finish' address.
         // The .0 part has the caller's address.
         if sp > 0 && i == stack[sp - 1].1 {
             // Restore program pointer
             i = stack[sp - 1].0;
-            println!("Restore program pointer to '{}'", i);
+            if DEBUG {println!("Restore program pointer to '{}'", i);}
             sp -= 1;
 
             // If the last part of the main program is a statement list, the new program pointer
             // will point past the end of the program, so we're done.
         } else {
             i = i + 1;
-            println!("Increment program pointer to '{}'", i);
+            if DEBUG {println!("Increment program pointer to '{}'", i);}
         }
         if i == pool.size() {
-            println!("Program complete.");
+            if DEBUG {println!("Program complete.");}
             break;
         }
     }
+    println!("Total instructions: {}", instruction_counter);
     state[i - 1].clone()
 }
 

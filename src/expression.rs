@@ -1,11 +1,12 @@
 use super::debug;
-use super::token::{CompareOp, Op, Token};
+use super::token::{CompareOp, LogicalOp, Op, Token};
 use super::types::LangType;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Binary(Op, ExprRef, ExprRef),
     Compare(CompareOp, ExprRef, ExprRef),
+    Logical(LogicalOp, ExprRef, ExprRef),
     Output(ExprRef, LangType),
     StmtList(ExprRef, ExprRef), // start addr and end addr useful for looping
     // To interpret or compile 'If' remember to increment the then_addr by 1and jump there

@@ -30,9 +30,9 @@ pub fn run(code: Vec<Token>) {
 
 use std::fs;
 
-fn main() {    
+fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let filename = match args.get(1){
+    let filename = match args.get(1) {
         Some(filename) => filename.clone(),
         None => {
             eprintln!("Supply a file name as the first argument to the interpreter.");
@@ -42,7 +42,7 @@ fn main() {
     let code = match fs::read_to_string(filename) {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("Error reading input file: '{}'",e);
+            eprintln!("Error reading input file: '{}'", e);
             std::process::exit(1);
         }
     };

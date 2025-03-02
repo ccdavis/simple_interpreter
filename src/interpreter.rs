@@ -1,9 +1,9 @@
 use super::expression::{Expr, ExprRef, ExpressionPool};
-use super::token::{CompareOp, Op};
+use super::token::{CompareOp, LogicalOp, Op};
 
 use std::fmt;
 
-const DEBUG:bool = false;
+const DEBUG: bool = false;
 
 #[derive(Clone)]
 pub enum Value {
@@ -148,9 +148,11 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
     //for (i, expr) in pool.exprs.iter().enumerate() {
     let mut i: usize = 0;
     loop {
-        instruction_counter+=1;
+        instruction_counter += 1;
         let expr = &pool.exprs[i];
-        if DEBUG {println!("{}:  Execute {:?}", i, &expr);}
+        if DEBUG {
+            println!("{}:  Execute {:?}", i, &expr);
+        }
         let result = match expr {
             Expr::Unit => Value::None,
             Expr::Output(value_addr, _) => {
@@ -173,7 +175,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             }
             Expr::Compare(op, lhs, rhs) => {
                 let lhs = &state[lhs.0 as usize];
-                let rhs = &state[rhs.0 as usize];                
+                let rhs = &state[rhs.0 as usize];
                 match op {
                     CompareOp::Eq => lhs.equal(rhs),
                     CompareOp::Ne => lhs.not_equal(rhs),
@@ -181,6 +183,35 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                     CompareOp::Gt => lhs.greater_than(rhs),
                     CompareOp::Lte => lhs.less_than_equal(rhs),
                     CompareOp::Gte => lhs.greater_than_equal(rhs),
+                }
+            }
+            Expr::Logical(logical_op, lhs, rhs) => {
+                match logical_op {
+                    LogicalOp::Or => {
+                        let lhs_value = &state[lhs.0 as usize];
+                        let rhs_value = &state[rhs.0 as usize];
+                        if let (Value::Bool(l), Value::Bool(r)) = (lhs_value, rhs_value) {
+                            Value::Bool(*l || *r)
+                        } else {
+                            // Runtime error
+                            panic!("Logical operators require boolean operands.");
+                        }
+                    }
+                    LogicalOp::And => {
+                        if let Value::Bool(l) = &state[lhs.0 as usize] {
+                            if !*l {
+                                // Skip the right hand side of the 'and'
+                                i = rhs.0 as usize + 1;
+                                Value::Bool(false)
+                            } else {
+                                // Evaluate right hand side:
+                                continue;
+                            }
+                        } else {
+                            // Runtime error
+                            panic!("The 'and' operator requires boolean operands.");
+                        }
+                    }
                 }
             }
             Expr::LiteralInt(i) => Value::Int(*i),
@@ -202,7 +233,9 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                 // and so when  completing the list we have to pop the stack, and change control to the value
                 // stored on the top. That is done elsewhere.
                 if sp > 0 {
-                    if DEBUG {println!("Enter statement liststarting at {}, {}", i + 1, finish.0);}
+                    if DEBUG {
+                        println!("Enter statement liststarting at {}, {}", i + 1, finish.0);
+                    }
                     // 'start' is where the first statement value will be placed, likewise with 'finish' for the last.
                     // The code to execute however begins immediately after the location of the statement list
                     // The 'finish' address is used to check the counter 'i and know when the statement list is done.
@@ -215,7 +248,9 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                 match &state[cond_addr.0 as usize] {
                     Value::Bool(b) => {
                         if *b {
-                            if DEBUG {println!("Enter for loop");}
+                            if DEBUG {
+                                println!("Enter for loop");
+                            }
                             sp += 1;
                             // When in a statement-list (sp>0) we restore the program pointer
                             // to  stack[sp-1].0. In a loop we need to jump back to the conditional
@@ -229,7 +264,9 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                         } else {
                             // Jump past the loop's statements
                             i = skip_statements(pool, loop_addr);
-                            if DEBUG {println!("Finished withfor loop, skip to {}", i);}
+                            if DEBUG {
+                                println!("Finished withfor loop, skip to {}", i);
+                            }
                             continue;
                         }
                     }
@@ -262,24 +299,32 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             _ => panic!("not implemented"),
         };
         state[i] = result;
-        if DEBUG {println!("{}: value: {}", i, &state[i]);}
+        if DEBUG {
+            println!("{}: value: {}", i, &state[i]);
+        }
 
         // Did we reach the end of the current scope? The .1 part of the stack frame tuple has the 'finish' address.
         // The .0 part has the caller's address.
         if sp > 0 && i == stack[sp - 1].1 {
             // Restore program pointer
             i = stack[sp - 1].0;
-            if DEBUG {println!("Restore program pointer to '{}'", i);}
+            if DEBUG {
+                println!("Restore program pointer to '{}'", i);
+            }
             sp -= 1;
 
             // If the last part of the main program is a statement list, the new program pointer
             // will point past the end of the program, so we're done.
         } else {
             i = i + 1;
-            if DEBUG {println!("Increment program pointer to '{}'", i);}
+            if DEBUG {
+                println!("Increment program pointer to '{}'", i);
+            }
         }
         if i == pool.size() {
-            if DEBUG {println!("Program complete.");}
+            if DEBUG {
+                println!("Program complete.");
+            }
             break;
         }
     }

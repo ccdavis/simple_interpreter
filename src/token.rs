@@ -26,6 +26,7 @@ pub enum TokenValue {
     // Any data operations
     Operator(Op),
     CompareOperator(CompareOp),
+    LogicalOperator(LogicalOp),
 
     // Keywords
     Output,
@@ -48,7 +49,6 @@ pub enum TokenValue {
     LeftBrace,
     RightBrace,
     Comment(String),
-
     Eof,
 }
 
@@ -89,6 +89,12 @@ pub enum CompareOp {
     Gte,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum LogicalOp {
+    And,
+    Or,
+}
+
 impl fmt::Display for TokenValue {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
@@ -100,6 +106,7 @@ impl fmt::Display for TokenValue {
             Self::Unit => write!(f, "()"),
             Self::Operator(op) => write!(f, "{}", &op),
             Self::CompareOperator(op) => write!(f, "{}", &op),
+            Self::LogicalOperator(op) => write!(f, "{}", &op),
             Self::Output => write!(f, "output"),
             Self::Input => write!(f, "input"),
             Self::If => write!(f, "if"),
@@ -154,6 +161,14 @@ impl fmt::Display for CompareOp {
             Self::Ne => write!(f, "<>"),
             Self::Lte => write!(f, "<="),
             Self::Gte => write!(f, ">="),
+        }
+    }
+}
+impl fmt::Display for LogicalOp {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::And => write!(f, "and"),
+            Self::Or => write!(f, "or"),
         }
     }
 }
@@ -237,6 +252,10 @@ pub fn op_tok(o: Op) -> Token {
 
 pub fn compare_op_tok(o: CompareOp) -> Token {
     Token(TokenValue::CompareOperator(o), no_loc())
+}
+
+pub fn logical_tok(op: LogicalOp) -> Token {
+    Token(TokenValue::LogicalOperator(op), no_loc())
 }
 
 pub fn stmt_terminator_tok() -> Token {

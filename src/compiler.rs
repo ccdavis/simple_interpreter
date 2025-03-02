@@ -1,7 +1,7 @@
 use super::expression::{Expr, ExprRef, ExpressionPool};
 use super::parser::ParserState;
 use super::symbols::SymbolTable;
-use super::token::{Op, Token, TokenValue};
+use super::token::{LogicalOp, Op, Token, TokenValue};
 use super::types::LangType;
 
 pub type CompileResult = (ExprRef, LangType);
@@ -93,14 +93,14 @@ impl LanguageParser {
             TokenValue::If => self.if_stmt(),
             TokenValue::For => self.for_stmt(),
             TokenValue::Output => self.output_stmt(),
-            _ =>  {
+            _ => {
                 if look_ahead.same_type(&TokenValue::RightBrace) {
                     self.empty_stmt()
                 } else {
                     self.print_error("Parse error on statement.", &look_ahead);
                     std::process::exit(1);
                 }
-            }                        
+            }
         };
 
         (stmt_addr, stmt_type)
@@ -117,7 +117,7 @@ impl LanguageParser {
         if let TokenValue::Ident(ref name) = look_ahead.value() {
             self.source.advance();
             self.source.consume(&TokenValue::Assign);
-            let (variable_value, variable_type) = self.expression();
+            let (variable_value, variable_type) = self.logical_expression();
             let let_addr = self.target.add_with_type(
                 Expr::Let(variable_value, variable_type.clone()),
                 &variable_type,
@@ -132,7 +132,7 @@ impl LanguageParser {
 
     fn assign_stmt(&mut self, identifier: &str, id_token: &Token) -> CompileResult {
         self.source.consume(&TokenValue::Assign);
-        let (variable_value, variable_type) = self.expression();
+        let (variable_value, variable_type) = self.logical_expression();
         let ste = self.symbols.get(self.current_frame, identifier).clone();
         if let Some(symbol) = ste {
             let rhs_type = self.target.get_type(*symbol);
@@ -154,7 +154,7 @@ impl LanguageParser {
     fn if_stmt(&mut self) -> CompileResult {
         self.source.consume(&TokenValue::If);
         self.source.consume(&TokenValue::LeftParen);
-        let (cond_addr, cond_et) = self.expression();
+        let (cond_addr, cond_et) = self.logical_expression();
         if !matches!(cond_et, LangType::Boolean) {
             let msg = format!("Must use a boolean type of expression in an if-statement condition, but was '{:?}'.",cond_et);
             self.print_error(&msg, &self.next_token());
@@ -213,7 +213,7 @@ impl LanguageParser {
         self.source.consume(&TokenValue::For);
         self.source.consume(&TokenValue::LeftParen);
         // This form of 'for' functions like a 'while' loop.
-        let (cond_addr, _cond_type) = self.expression();
+        let (cond_addr, _cond_type) = self.logical_expression();
         // Other forms of 'for' can have three expressions: index, in low_exp to high_exp
         self.source.consume(&TokenValue::RightParen);
         let for_stmt_addr = self.target.add(Expr::For(cond_addr, ExprRef(0)));
@@ -228,25 +228,117 @@ impl LanguageParser {
 
     fn output_stmt(&mut self) -> CompileResult {
         self.source.consume(&TokenValue::Output);
-        let (value_addr, value_type) = self.expression();
+        let (value_addr, value_type) = self.logical_expression();
         let output_addr = self.target.add(Expr::Output(value_addr, value_type));
         (output_addr, LangType::Unit)
     }
 
     fn expression_list(&mut self) {
-        let (_, _) = self.expression();
+        let (_, _) = self.logical_expression();
         while let TokenValue::Comma = self.next_token().value() {
             self.source.matches(&[TokenValue::Comma]);
-            let (_, _) = self.expression();
+            let (_, _) = self.logical_expression();
         }
         // The address of the first expression or any of the types aren't needed anywhere
+    }
+
+    fn logical_expression(&mut self) -> CompileResult {
+        let (lhs_addr, expression_type) = self.expression();
+        let look_ahead = self.next_token();
+        if let TokenValue::LogicalOperator(logical_op) = look_ahead.value() {
+            println!("Parsing logical operation {:?}", &logical_op);
+            self.source.advance();
+
+            let logical_expr_ref = if matches!(logical_op, LogicalOp::Or) {
+                let (rhs_addr, rhs_expression_type) = self.expression();
+                if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
+                    let message = format!(
+                        "Can't compare arguments to '{}', must be boolean types.",
+                        look_ahead.value()
+                    );
+                    self.print_error(&message, &look_ahead);
+                    std::process::exit(1);
+                };
+
+                self.target.add_with_type(
+                    Expr::Logical(LogicalOp::Or, lhs_addr, rhs_addr),
+                    &LangType::Boolean,
+                )
+            } else {
+                // Add 'and' before compiling the right-hand side. After compiling
+                // the rhs we can update the expression with the rhs address.
+                let this_address = self.target.add_with_type(
+                    Expr::Logical(LogicalOp::And, lhs_addr, ExprRef(0)),
+                    &LangType::Boolean,
+                );
+                let (rhs_addr, rhs_expression_type) = self.expression();
+                if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
+                    let message = format!(
+                        "Can't compare arguments to '{}', must be boolean types.",
+                        look_ahead.value()
+                    );
+                    self.print_error(&message, &look_ahead);
+                    std::process::exit(1);
+                };
+                self.target.update(
+                    this_address,
+                    Expr::Logical(LogicalOp::And, lhs_addr, rhs_addr),
+                );
+                this_address
+            };
+            (logical_expr_ref, LangType::Boolean)
+        } else {
+            (lhs_addr, expression_type)
+        }
     }
 
     fn expression(&mut self) -> CompileResult {
         let (lhs_addr, expression_type) = self.simple_expression();
         let look_ahead = self.next_token();
-        if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
-            println!("Parsing compare operation {:?}", &bool_op);
+        if let TokenValue::LogicalOperator(logical_op) = look_ahead.value() {
+            println!("Parsing logical operation {:?}", &logical_op);
+            self.source.advance();
+
+            let logical_expr_ref = if matches!(logical_op, LogicalOp::Or) {
+                let (rhs_addr, rhs_expression_type) = self.simple_expression();
+                if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
+                    let message = format!(
+                        "Can't compare arguments to '{}', must be boolean types.",
+                        look_ahead.value()
+                    );
+                    self.print_error(&message, &look_ahead);
+                    std::process::exit(1);
+                };
+
+                self.target.add_with_type(
+                    Expr::Logical(LogicalOp::Or, lhs_addr, rhs_addr),
+                    &LangType::Boolean,
+                )
+            } else {
+                // Add 'and' before compiling the right-hand side. After compiling
+                // the rhs we can update the expression with the rhs address.
+                let this_address = self.target.add_with_type(
+                    Expr::Logical(LogicalOp::And, lhs_addr, ExprRef(0)),
+                    &LangType::Boolean,
+                );
+                let (rhs_addr, rhs_expression_type) = self.simple_expression();
+                if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
+                    let message = format!(
+                        "Can't compare arguments to '{}', must be boolean types.",
+                        look_ahead.value()
+                    );
+                    self.print_error(&message, &look_ahead);
+                    std::process::exit(1);
+                };
+                self.target.update(
+                    this_address,
+                    Expr::Logical(LogicalOp::And, lhs_addr, rhs_addr),
+                );
+                this_address
+            };
+            (logical_expr_ref, LangType::Boolean)
+        } else if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
+            println!("Parsing compare operation {}", &bool_op);
             self.source.advance();
             let (rhs_addr, rhs_expression_type) = self.simple_expression();
 
@@ -415,7 +507,7 @@ impl LanguageParser {
             }
             TokenValue::LeftParen => {
                 self.source.advance();
-                let (expression_addr, expression_type) = self.expression();
+                let (expression_addr, expression_type) = self.logical_expression();
                 if self.source.matches(&[TokenValue::RightParen]) {
                     (expression_addr, expression_type)
                 } else {
@@ -496,6 +588,33 @@ mod test {
         assert_eq!(exprs.exprs[0], Expr::StmtList(ExprRef(2), ExprRef(2)));
         assert_eq!(exprs.exprs[1], Expr::LiteralInt(8));
         assert_eq!(exprs.exprs[2], Expr::Let(ExprRef(1), LangType::Integer));
+    }
+
+    #[test]
+    fn test_logical_operations() {
+        let code = vec![
+            output_tok(),
+            int_tok(5),
+            compare_op_tok(CompareOp::Eq),
+            int_tok(5),
+            logical_tok(LogicalOp::Or),
+            int_tok(5),
+            compare_op_tok(CompareOp::Eq),
+            int_tok(3),
+            eof_tok(),
+        ];
+        let program = try_parsing(code);
+        assert!(program.is_ok());
+        let exprs = program.unwrap();
+        assert_eq!(9, exprs.size());
+        assert_eq!(
+            &Expr::Output(ExprRef(7), LangType::Boolean),
+            &exprs.exprs[8]
+        );
+        assert_eq!(
+            &Expr::Logical(LogicalOp::Or, ExprRef(3), ExprRef(6)),
+            &exprs.exprs[7]
+        );
     }
 
     #[test]

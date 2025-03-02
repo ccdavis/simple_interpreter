@@ -39,6 +39,13 @@ impl LangType {
         }
     }
 
+    pub fn both_boolean(lhs: &Self, rhs: &Self) -> bool {
+        match (lhs, rhs) {
+            (&Self::Boolean, &Self::Boolean) => true,
+            _ => false,
+        }
+    }
+
     pub fn both_scalar(lhs: &Self, rhs: &Self) -> bool {
         lhs.scalar() && rhs.scalar()
     }

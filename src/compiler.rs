@@ -490,6 +490,13 @@ impl LanguageParser {
                 self.source.advance();
                 (expr_addr, LangType::String)
             }
+            TokenValue::Bool(b) => {
+                let expr_addr = self
+                    .target
+                    .add_with_type(Expr::LiteralBool(*b), &LangType::Boolean);
+                self.source.advance();
+                (expr_addr, LangType::Boolean)
+            }
             TokenValue::Ident(name) => {
                 let ste = self.symbols.get(self.current_frame, name).clone();
                 if let Some(value_storage) = ste {

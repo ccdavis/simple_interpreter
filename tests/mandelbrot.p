@@ -29,18 +29,18 @@ for (left < right) {
         let tmp_zx := 0.0;
 
         let not_escaped := true;
-        if ((x*x + iy*iy) < 2.0 *escape_radius) {
+        if ((zn_x*zn_x + zn_iy*zn_iy) < 2.0 *escape_radius) {
             not_escaped := false
         };
-        for (iterations< max_iterations and not_escaped = true) {
+        for (iterations< max_iterations and not_escaped) {
             if (not_escaped) {
-                tmp_zx := c_x + (zn_x * zn_x - zn_iy * zn_iy);
-                zn_iy := c_iy + 2.0 * zn_x * zn_iy;
+                tmp_zx := left + (zn_x * zn_x - zn_iy * zn_iy);
+                zn_iy := top + 2.0 * zn_x * zn_iy;
                 zn_x := tmp_zx;
                 iterations := iterations + 1;
             };
 
-	        if ((x*x + iy*iy) < 2.0 *escape_radius) {
+	        if ((zn_x*zn_x + zn_iy*zn_iy) < 2.0 *escape_radius) {
                 not_escaped := false
             }                        
         };
@@ -52,9 +52,9 @@ for (left < right) {
         top := top + y_increment
     };
     output line;
-    top := y1;
-    left := left + x_increment
 };
+output "Complete!"
 	
+    
     
 

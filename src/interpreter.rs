@@ -77,7 +77,7 @@ impl Value {
             (Value::Flt(i), Value::Int(j)) => Value::Bool(*i < *j as f64),
             (Value::Int(i), Value::Flt(j)) => Value::Bool(*j > *i as f64),
             (Value::Flt(i), Value::Flt(j)) => Value::Bool(*i < *j),
-            _ => panic!("Invalid operands for '<'"),
+            _ => panic!("Invalid operands for '<': {}, {}", &self, &rhs),
         }
     }
 

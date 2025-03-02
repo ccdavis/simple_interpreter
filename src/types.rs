@@ -76,7 +76,9 @@ impl LangType {
             }
         } else if LangType::both_string(&lhs_type, &rhs_type) {
             LangType::String
-        } else {
+        } else if LangType::both_boolean(&lhs_type, &rhs_type){
+            LangType::Boolean
+        } else{
             panic!(
                 "Invalid type combination '{:?}', '{:?}'",
                 lhs_type, rhs_type

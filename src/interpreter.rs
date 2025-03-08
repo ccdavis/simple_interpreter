@@ -30,6 +30,7 @@ impl fmt::Display for Value {
 } // display
 
 impl Value {
+    #[inline(always)]
     pub fn add(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Int(i.wrapping_add(*j)),
@@ -41,6 +42,7 @@ impl Value {
         }
     }
 
+    #[inline(always)]
     pub fn sub(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Int(i.wrapping_sub(*j)),
@@ -50,7 +52,7 @@ impl Value {
             _ => panic!("Invalid operands for '+'"),
         }
     }
-
+    #[inline(always)]
     pub fn div(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Int(i.wrapping_div(*j)),
@@ -61,6 +63,7 @@ impl Value {
         }
     }
 
+    #[inline(always)]
     pub fn mul(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Int(i.wrapping_mul(*j)),
@@ -70,7 +73,7 @@ impl Value {
             _ => panic!("Invalid operands for '+'"),
         }
     }
-
+    #[inline(always)]
     pub fn less_than(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Bool(*i < *j),
@@ -81,6 +84,7 @@ impl Value {
         }
     }
 
+    #[inline(always)]
     pub fn equal(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Bool(*i == *j),
@@ -91,6 +95,7 @@ impl Value {
         }
     }
 
+    #[inline(always)]
     pub fn not_equal(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Bool(*i != *j),
@@ -101,6 +106,7 @@ impl Value {
         }
     }
 
+    #[inline(always)]
     pub fn greater_than(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Bool(*i > *j),
@@ -111,6 +117,7 @@ impl Value {
         }
     }
 
+    #[inline(always)]
     pub fn greater_than_equal(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Bool(*i >= *j),
@@ -121,6 +128,7 @@ impl Value {
         }
     }
 
+    #[inline(always)]
     pub fn less_than_equal(&self, rhs: &Value) -> Value {
         match (self, rhs) {
             (Value::Int(i), Value::Int(j)) => Value::Bool(*i <= *j),
@@ -132,6 +140,7 @@ impl Value {
     }
 }
 
+#[inline(always)]
 pub fn skip_statements(pool: &ExpressionPool, expr_ref: &ExprRef) -> usize {
     match &pool.exprs[expr_ref.0 as usize] {
         Expr::StmtList(_head, ref tail) => tail.0 as usize,
@@ -193,6 +202,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                         if let (Value::Bool(l), Value::Bool(r)) = (lhs_value, rhs_value) {
                             Value::Bool(*l || *r)
                         } else {
+                            // TODO turn into internal error (compiler should prevent this situation.)
                             // Runtime error
                             panic!("Logical operators require boolean operands.");
                         }
@@ -201,12 +211,12 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                         if let Value::Bool(l) = &state[lhs.0 as usize] {
                             if !*l {
                                 // Skip the right hand side of the 'and'
-                                i = rhs.0 as usize + 1;
+                                i = rhs.0 as usize;
                                 Value::Bool(false)
                             } else {
                                 // Evaluate right hand side:
-                                i = i + 1;
-                                continue;
+                                //i = i + 1;
+                                Value::Bool(true)
                             }
                         } else {
                             // Runtime error
@@ -412,6 +422,7 @@ mod test {
 
     #[test]
     fn test_logical_and_op() {
+        println!("test logical AND op ---------------------------------------");
         let program = vec![
             output_tok(),
             int_tok(5),

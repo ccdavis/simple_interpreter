@@ -20,12 +20,20 @@ use token::Token;
 // Running consumes the tokens
 pub fn run(code: Vec<Token>) {
     let mut language_parser = LanguageParser::new(code);
-    let syntax_pool = language_parser
-        .parse_program()
-        .expect("Error during parsing.");
-    // Interpret the syntax pool
-    let value = interpreter::run(&syntax_pool, expression::ExprRef(0));
-    println!("Final value: {}", &value);
+    let ir_pool = language_parser.parse_program();
+
+    match ir_pool {
+        Err(errors) => {
+            for e in errors {
+                eprintln!("{}", e);
+            }
+        }
+        Ok(ir) => {
+            // Interpret the intermediate representation.
+            let value = interpreter::run(&ir, expression::ExprRef(0));
+            println!("Final value: {}", &value);
+        }
+    }
 }
 
 use std::fs;

@@ -9,6 +9,8 @@ use std::fmt;
 
 pub type CompileResult = Result<(ExprRef, LangType), CompilerError>;
 
+const PARSER_DEBUG: bool = false;
+
 // Translates from source to target
 pub struct LanguageParser {
     source: ParserState,
@@ -120,7 +122,9 @@ impl LanguageParser {
 
     fn empty_stmt(&mut self) -> CompileResult {
         let addr = self.target.add_with_type(Expr::Unit, &LangType::Unit);
-        println!("Added empty statement at: {}", addr.0);
+        if PARSER_DEBUG {
+            println!("Added empty statement at: {}", addr.0);
+        }
         Ok((addr, LangType::Unit))
     }
 
@@ -242,15 +246,19 @@ impl LanguageParser {
     fn output_stmt(&mut self) -> CompileResult {
         self.source.consume(&TokenValue::Output);
         let (value_addr, value_type) = self.logical_expression()?;
-        println!("Added value to output: {:?}", self.target.get(value_addr));
+        if PARSER_DEBUG {
+            println!("Added value to output: {:?}", self.target.get(value_addr));
+        }
         let output_addr = self
             .target
             .add_with_type(Expr::Output(value_addr, value_type.clone()), &value_type);
-        println!(
-            "{}: Added output statement: {:?}",
-            output_addr.0,
-            self.target.get(output_addr)
-        );
+        if PARSER_DEBUG {
+            println!(
+                "{}: Added output statement: {:?}",
+                output_addr.0,
+                self.target.get(output_addr)
+            );
+        }
         Ok((output_addr, value_type))
     }
 
@@ -268,7 +276,9 @@ impl LanguageParser {
         let (lhs_addr, expression_type) = self.expression()?;
         let look_ahead = self.next_token();
         if let TokenValue::LogicalOperator(logical_op) = look_ahead.value() {
-            println!("Parsing logical operation {:?}", &logical_op);
+            if PARSER_DEBUG {
+                println!("Parsing logical operation {:?}", &logical_op);
+            }
             self.source.advance();
 
             let logical_expr_ref = if matches!(logical_op, LogicalOp::Or) {
@@ -306,7 +316,10 @@ impl LanguageParser {
                     this_address,
                     Expr::Logical(LogicalOp::And, lhs_addr, rhs_addr),
                 );
-                this_address
+                // In the case the lhs is false we can have the vm move the program pointer
+                // here and place the result. In the case it's true on the lhs we have to
+                // evaluate the rhs anyhow and that result ends up at rhs_addr.
+                rhs_addr
             };
             Ok((logical_expr_ref, LangType::Boolean))
         } else {
@@ -318,7 +331,12 @@ impl LanguageParser {
         let (lhs_addr, expression_type) = self.simple_expression()?;
         let look_ahead = self.next_token();
         if let TokenValue::LogicalOperator(logical_op) = look_ahead.value() {
-            println!("Parsing logical operation {:?}", &logical_op);
+            if PARSER_DEBUG {
+                println!(
+                    "From expression(), Parsing logical operation {:?}",
+                    &logical_op
+                );
+            }
             self.source.advance();
             let logical_expr_ref = if matches!(logical_op, LogicalOp::Or) {
                 let (rhs_addr, rhs_expression_type) = self.simple_expression()?;
@@ -359,7 +377,9 @@ impl LanguageParser {
             };
             Ok((logical_expr_ref, LangType::Boolean))
         } else if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
-            println!("Parsing compare operation {}", &bool_op);
+            if PARSER_DEBUG {
+                println!("Parsing compare operation {}", &bool_op);
+            }
             self.source.advance();
             let (rhs_addr, rhs_expression_type) = self.simple_expression()?;
 
@@ -553,7 +573,7 @@ impl LanguageParser {
                 std::process::exit(1);
             }
         };
-        println!("Parsed factor: '{:?}'", &result);
+        // println!("Parsed factor: '{:?}'", &result);
 
         result
     }

@@ -3,7 +3,7 @@ use super::token::{CompareOp, LogicalOp, Op};
 
 use std::fmt;
 
-const DEBUG: bool = false;
+const DEBUG: bool = true;
 
 #[derive(Clone)]
 pub enum Value {
@@ -205,6 +205,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                                 Value::Bool(false)
                             } else {
                                 // Evaluate right hand side:
+                                i = i + 1;
                                 continue;
                             }
                         } else {
@@ -410,6 +411,56 @@ mod test {
     }
 
     #[test]
+    fn test_logical_and_op() {
+        let program = vec![
+            output_tok(),
+            int_tok(5),
+            compare_op_tok(CompareOp::Eq),
+            int_tok(3),
+            logical_tok(LogicalOp::And),
+            int_tok(3),
+            compare_op_tok(CompareOp::Eq),
+            int_tok(3),
+            eof_tok(),
+        ];
+        let parsed_code = try_parsing(program);
+        assert!(parsed_code.is_ok());
+        let ir = match parsed_code {
+            Err(e) => {
+                panic!("Failed to parse test program: {}", &e);
+            }
+            Ok(code) => code,
+        };
+        ir.debug_dump();
+        let result = run(&ir, ExprRef(0));
+        assert!(matches!(result, Value::Bool(false)));
+
+        let program_true = vec![
+            output_tok(),
+            int_tok(5),
+            compare_op_tok(CompareOp::Eq),
+            int_tok(5),
+            logical_tok(LogicalOp::And),
+            int_tok(3),
+            compare_op_tok(CompareOp::Eq),
+            int_tok(3),
+            eof_tok(),
+        ];
+        let parsed_code = try_parsing(program_true);
+        assert!(parsed_code.is_ok());
+        let ir = match parsed_code {
+            Err(e) => {
+                panic!("Failed to parse test program: {}", &e);
+            }
+            Ok(code) => code,
+        };
+        ir.debug_dump();
+        let result = run(&ir, ExprRef(0));
+        println!("result of program_true: {}", result);
+        assert!(matches!(result, Value::Bool(true)));
+    }
+
+    #[test]
     fn test_if_stmt() {
         let program = vec![
             let_stmt_tok(),
@@ -496,12 +547,13 @@ mod test {
         let mut language_parser = LanguageParser::new(code);
         assert_eq!(1, language_parser.symbol_table_frame());
         let expr_pool = language_parser.parse_program();
-
-        // TODO Put in real error handling
-        if let Some(output) = expr_pool {
-            Ok(output)
-        } else {
-            Err(format!("No results from parsing. Check STDERR."))
+        match expr_pool {
+            Ok(output) => Ok(output),
+            Err(e) => Err(e
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<String>>()
+                .join("\n")),
         }
     }
 }

@@ -54,6 +54,14 @@ impl ExpressionPool {
         }
     }
 
+    pub fn debug_dump(&self) {
+        for address in 0..self.size() {
+            let exp = self.exprs[address].clone();
+            let exp_type = self.types[address].clone();
+            println!("{}:\t{:?}\t\t{:?}", address, exp, exp_type);
+        }
+    }
+
     /// Dereference an AST node reference, obtaining the underlying `Expr`.
     pub fn get(&self, expr_ref: ExprRef) -> &Expr {
         &self.exprs[expr_ref.0 as usize]
@@ -68,9 +76,6 @@ impl ExpressionPool {
     pub fn add(&mut self, expr: Expr) -> ExprRef {
         let idx = self.exprs.len();
         self.exprs.push(expr);
-        if debug(1) {
-            println!("{}: Produced {:?}", idx, self.exprs.last().unwrap());
-        }
         self.types.push(LangType::Unresolved);
         ExprRef(idx.try_into().expect("too many exprs in the pool"))
     }
@@ -78,9 +83,6 @@ impl ExpressionPool {
     pub fn add_with_type(&mut self, expr: Expr, expr_type: &LangType) -> ExprRef {
         let idx = self.exprs.len();
         self.exprs.push(expr);
-        if debug(1) {
-            println!("{}: Produced {:?}", idx, self.exprs.last().unwrap());
-        }
         self.types.push(expr_type.clone());
         ExprRef(idx.try_into().expect("too many exprs in the pool"))
     }

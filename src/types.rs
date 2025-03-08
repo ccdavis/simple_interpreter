@@ -76,13 +76,35 @@ impl LangType {
             }
         } else if LangType::both_string(&lhs_type, &rhs_type) {
             LangType::String
-        } else if LangType::both_boolean(&lhs_type, &rhs_type){
+        } else if LangType::both_boolean(&lhs_type, &rhs_type) {
             LangType::Boolean
-        } else{
+        } else {
             panic!(
                 "Invalid type combination '{:?}', '{:?}'",
                 lhs_type, rhs_type
             );
         }
     }
+}
+
+use std::fmt;
+
+impl fmt::Display for LangType {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::Integer => write!(f, "integer"),
+            Self::Float => write!(f, "float"),
+            Self::Boolean => write!(f, "boolean"),
+            Self::String => write!(f, "string"),
+            Self::Unit => write!(f, "unit"),
+            Self::Unresolved => write!(f, "UNRESOLVED"),
+            Self::Named { name, parent } => {
+                if let Some(t) = parent {
+                    write!(f, "{} ({})", name, t)
+                } else {
+                    write!(f, "{}", name)
+                }
+            }
+        } // match
+    } // fmt
 }

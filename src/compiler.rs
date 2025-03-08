@@ -1,10 +1,13 @@
+use crate::token::TokenLocation;
+
 use super::expression::{Expr, ExprRef, ExpressionPool};
 use super::parser::ParserState;
 use super::symbols::SymbolTable;
 use super::token::{LogicalOp, Op, Token, TokenValue};
 use super::types::LangType;
+use std::fmt;
 
-pub type CompileResult = (ExprRef, LangType);
+pub type CompileResult = Result<(ExprRef, LangType), CompilerError>;
 
 // Translates from source to target
 pub struct LanguageParser {
@@ -12,6 +15,7 @@ pub struct LanguageParser {
     target: ExpressionPool,
     symbols: SymbolTable,
     current_frame: usize,
+    errors: Vec<CompilerError>,
 }
 
 impl LanguageParser {
@@ -39,24 +43,32 @@ impl LanguageParser {
             target: ExpressionPool::default(),
             symbols: SymbolTable::default(),
             current_frame: 0,
+            errors: Vec::new(),
         }
     }
 
     // The grammar specific logic ---------------------
-    pub fn parse_program(&mut self) -> Option<ExpressionPool> {
-        self.statement_list();
+    pub fn parse_program(&mut self) -> Result<ExpressionPool, Vec<CompilerError>> {
+        // TODO: Instead of returning from the first error, parse as many statements as possible.
+        if let Err(e) = self.statement_list() {
+            return Err(vec![e]);
+        }
         self.source.consume(&TokenValue::Eof);
         // TODO move this to a separate clone function
-        Some(self.target.clone())
+        if self.errors.is_empty() {
+            Ok(self.target.clone())
+        } else {
+            Err(self.errors.clone())
+        }
     }
-
-    // I'm going to convert these statements into expression-statements.
 
     fn statement_list(&mut self) -> CompileResult {
         let stmt_list_addr = self.target.add(Expr::StmtList(ExprRef(0), ExprRef(0)));
-        let (mut stmt_addr, mut stmt_type) = self.statement();
+        let (mut stmt_addr, mut stmt_type) = self.statement()?;
         let first_stmt_addr = stmt_addr;
 
+        // TODO: if a statement has an error, read to the next ';' token or the end of the list to
+        // be able to parse the next statement, to catch  more than one error at a time.
         let mut look_ahead = self.next_token();
         while !matches!(look_ahead.value(), TokenValue::Eof)
             && !matches!(look_ahead.value(), TokenValue::RightBrace)
@@ -64,25 +76,25 @@ impl LanguageParser {
         {
             // This is the statement separator
             self.source.consume(&TokenValue::SemiColon);
-            (stmt_addr, stmt_type) = self.statement();
+            (stmt_addr, stmt_type) = self.statement()?;
             look_ahead = self.next_token();
         }
         self.target
             .update(stmt_list_addr, Expr::StmtList(first_stmt_addr, stmt_addr));
-        (stmt_list_addr, stmt_type)
+        Ok((stmt_list_addr, stmt_type))
     }
 
     fn statement(&mut self) -> CompileResult {
         let look_ahead = self.next_token();
         let (stmt_addr, stmt_type) = match look_ahead.value() {
-            TokenValue::Let => self.let_stmt(),
+            TokenValue::Let => self.let_stmt()?,
             TokenValue::Ident(ref name) => {
                 self.source.advance();
                 let after_ident = self.next_token();
                 // The identifier might be followed by a '(' : a left hand side function call;
                 // or '[': an index into a collection of some kind; or just an assignment symbol.])
                 match after_ident.value() {
-                    TokenValue::Assign => self.assign_stmt(name, &look_ahead),
+                    TokenValue::Assign => self.assign_stmt(name, &look_ahead)?,
                     // Other paths not implemented yet
                     _ => {
                         self.print_error("Syntax error.", &after_ident);
@@ -90,12 +102,12 @@ impl LanguageParser {
                     }
                 }
             }
-            TokenValue::If => self.if_stmt(),
-            TokenValue::For => self.for_stmt(),
-            TokenValue::Output => self.output_stmt(),
+            TokenValue::If => self.if_stmt()?,
+            TokenValue::For => self.for_stmt()?,
+            TokenValue::Output => self.output_stmt()?,
             _ => {
                 if look_ahead.same_type(&TokenValue::RightBrace) {
-                    self.empty_stmt()
+                    self.empty_stmt()?
                 } else {
                     self.print_error("Parse error on statement.", &look_ahead);
                     std::process::exit(1);
@@ -103,12 +115,13 @@ impl LanguageParser {
             }
         };
 
-        (stmt_addr, stmt_type)
+        Ok((stmt_addr, stmt_type))
     }
 
     fn empty_stmt(&mut self) -> CompileResult {
         let addr = self.target.add_with_type(Expr::Unit, &LangType::Unit);
-        (addr, LangType::Unit)
+        println!("Added empty statement at: {}", addr.0);
+        Ok((addr, LangType::Unit))
     }
 
     fn let_stmt(&mut self) -> CompileResult {
@@ -117,13 +130,13 @@ impl LanguageParser {
         if let TokenValue::Ident(ref name) = look_ahead.value() {
             self.source.advance();
             self.source.consume(&TokenValue::Assign);
-            let (variable_value, variable_type) = self.logical_expression();
+            let (variable_value, variable_type) = self.logical_expression()?;
             let let_addr = self.target.add_with_type(
                 Expr::Let(variable_value, variable_type.clone()),
                 &variable_type,
             );
             self.symbols.set(self.current_frame, name, let_addr);
-            (let_addr, variable_type)
+            Ok((let_addr, variable_type))
         } else {
             self.print_error("Expected identifier", &look_ahead);
             std::process::exit(1);
@@ -132,7 +145,7 @@ impl LanguageParser {
 
     fn assign_stmt(&mut self, identifier: &str, id_token: &Token) -> CompileResult {
         self.source.consume(&TokenValue::Assign);
-        let (variable_value, variable_type) = self.logical_expression();
+        let (variable_value, variable_type) = self.logical_expression()?;
         let ste = self.symbols.get(self.current_frame, identifier).clone();
         if let Some(symbol) = ste {
             let rhs_type = self.target.get_type(*symbol);
@@ -143,7 +156,7 @@ impl LanguageParser {
             let assign_addr = self
                 .target
                 .add(Expr::Assign(symbol.clone(), variable_value));
-            (assign_addr, rhs_type)
+            Ok((assign_addr, rhs_type))
         } else {
             let msg = format!("Unknown identifier: '{}'", identifier);
             self.print_error(&msg, id_token);
@@ -154,7 +167,7 @@ impl LanguageParser {
     fn if_stmt(&mut self) -> CompileResult {
         self.source.consume(&TokenValue::If);
         self.source.consume(&TokenValue::LeftParen);
-        let (cond_addr, cond_et) = self.logical_expression();
+        let (cond_addr, cond_et) = self.logical_expression()?;
         if !matches!(cond_et, LangType::Boolean) {
             let msg = format!("Must use a boolean type of expression in an if-statement condition, but was '{:?}'.",cond_et);
             self.print_error(&msg, &self.next_token());
@@ -165,7 +178,7 @@ impl LanguageParser {
         let if_stmt_addr = self.target.add(Expr::If(cond_addr, ExprRef(0), None));
 
         self.source.consume(&TokenValue::LeftBrace);
-        let (then_addr, then_type) = self.statement_list();
+        let (then_addr, then_type) = self.statement_list()?;
         self.source.consume(&TokenValue::RightBrace);
 
         // The then_addr points to a statement list from which we can compute the location past
@@ -179,7 +192,7 @@ impl LanguageParser {
 
         if self.source.matches(&[TokenValue::Else]) {
             self.source.consume(&TokenValue::LeftBrace);
-            let (else_addr, else_type) = self.statement_list();
+            let (else_addr, else_type) = self.statement_list()?;
             self.source.consume(&TokenValue::RightBrace);
             if then_type.same_as(&else_type) {
                 // The 'else_addr' marks the location where the interpreter should jump to if
@@ -206,51 +219,60 @@ impl LanguageParser {
             let completed_if = Expr::If(cond_addr, conditional_branch_addr, None);
             self.target.update(if_stmt_addr, completed_if);
         }
-        (if_stmt_addr, then_type)
+        Ok((if_stmt_addr, then_type))
     }
 
     pub fn for_stmt(&mut self) -> CompileResult {
         self.source.consume(&TokenValue::For);
         self.source.consume(&TokenValue::LeftParen);
         // This form of 'for' functions like a 'while' loop.
-        let (cond_addr, _cond_type) = self.logical_expression();
+        let (cond_addr, _cond_type) = self.logical_expression()?;
         // Other forms of 'for' can have three expressions: index, in low_exp to high_exp
         self.source.consume(&TokenValue::RightParen);
         let for_stmt_addr = self.target.add(Expr::For(cond_addr, ExprRef(0)));
 
         self.source.consume(&TokenValue::LeftBrace);
-        let (loop_addr, loop_type) = self.statement_list();
+        let (loop_addr, loop_type) = self.statement_list()?;
         self.source.consume(&TokenValue::RightBrace);
         self.target
             .update(for_stmt_addr, Expr::For(cond_addr, loop_addr));
-        (for_stmt_addr, loop_type)
+        Ok((for_stmt_addr, loop_type))
     }
 
     fn output_stmt(&mut self) -> CompileResult {
         self.source.consume(&TokenValue::Output);
-        let (value_addr, value_type) = self.logical_expression();
-        let output_addr = self.target.add(Expr::Output(value_addr, value_type));
-        (output_addr, LangType::Unit)
+        let (value_addr, value_type) = self.logical_expression()?;
+        println!("Added value to output: {:?}", self.target.get(value_addr));
+        let output_addr = self
+            .target
+            .add_with_type(Expr::Output(value_addr, value_type.clone()), &value_type);
+        println!(
+            "{}: Added output statement: {:?}",
+            output_addr.0,
+            self.target.get(output_addr)
+        );
+        Ok((output_addr, value_type))
     }
 
-    fn expression_list(&mut self) {
-        let (_, _) = self.logical_expression();
+    fn expression_list(&mut self) -> CompileResult {
+        let (expr_ref, _) = self.logical_expression()?;
         while let TokenValue::Comma = self.next_token().value() {
             self.source.matches(&[TokenValue::Comma]);
-            let (_, _) = self.logical_expression();
+            let (expr_ref, _) = self.logical_expression()?;
         }
         // The address of the first expression or any of the types aren't needed anywhere
+        Ok((expr_ref, LangType::Unit))
     }
 
     fn logical_expression(&mut self) -> CompileResult {
-        let (lhs_addr, expression_type) = self.expression();
+        let (lhs_addr, expression_type) = self.expression()?;
         let look_ahead = self.next_token();
         if let TokenValue::LogicalOperator(logical_op) = look_ahead.value() {
             println!("Parsing logical operation {:?}", &logical_op);
             self.source.advance();
 
             let logical_expr_ref = if matches!(logical_op, LogicalOp::Or) {
-                let (rhs_addr, rhs_expression_type) = self.expression();
+                let (rhs_addr, rhs_expression_type) = self.expression()?;
                 if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
                     let message = format!(
                         "Can't compare arguments to '{}', must be boolean types.",
@@ -271,7 +293,7 @@ impl LanguageParser {
                     Expr::Logical(LogicalOp::And, lhs_addr, ExprRef(0)),
                     &LangType::Boolean,
                 );
-                let (rhs_addr, rhs_expression_type) = self.expression();
+                let (rhs_addr, rhs_expression_type) = self.expression()?;
                 if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
                     let message = format!(
                         "Can't compare arguments to '{}', must be boolean types.",
@@ -286,21 +308,20 @@ impl LanguageParser {
                 );
                 this_address
             };
-            (logical_expr_ref, LangType::Boolean)
+            Ok((logical_expr_ref, LangType::Boolean))
         } else {
-            (lhs_addr, expression_type)
+            Ok((lhs_addr, expression_type))
         }
     }
 
     fn expression(&mut self) -> CompileResult {
-        let (lhs_addr, expression_type) = self.simple_expression();
+        let (lhs_addr, expression_type) = self.simple_expression()?;
         let look_ahead = self.next_token();
         if let TokenValue::LogicalOperator(logical_op) = look_ahead.value() {
             println!("Parsing logical operation {:?}", &logical_op);
             self.source.advance();
-
             let logical_expr_ref = if matches!(logical_op, LogicalOp::Or) {
-                let (rhs_addr, rhs_expression_type) = self.simple_expression();
+                let (rhs_addr, rhs_expression_type) = self.simple_expression()?;
                 if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
                     let message = format!(
                         "Can't compare arguments to '{}', must be boolean types.",
@@ -321,7 +342,7 @@ impl LanguageParser {
                     Expr::Logical(LogicalOp::And, lhs_addr, ExprRef(0)),
                     &LangType::Boolean,
                 );
-                let (rhs_addr, rhs_expression_type) = self.simple_expression();
+                let (rhs_addr, rhs_expression_type) = self.simple_expression()?;
                 if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
                     let message = format!(
                         "Can't compare arguments to '{}', must be boolean types.",
@@ -336,11 +357,11 @@ impl LanguageParser {
                 );
                 this_address
             };
-            (logical_expr_ref, LangType::Boolean)
+            Ok((logical_expr_ref, LangType::Boolean))
         } else if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
             println!("Parsing compare operation {}", &bool_op);
             self.source.advance();
-            let (rhs_addr, rhs_expression_type) = self.simple_expression();
+            let (rhs_addr, rhs_expression_type) = self.simple_expression()?;
 
             // Some basic type checking
             if !LangType::comparable(expression_type, rhs_expression_type) {
@@ -353,9 +374,9 @@ impl LanguageParser {
                 Expr::Compare(bool_op, lhs_addr, rhs_addr),
                 &LangType::Boolean,
             );
-            (this_address, LangType::Boolean)
+            Ok((this_address, LangType::Boolean))
         } else {
-            (lhs_addr, expression_type)
+            Ok((lhs_addr, expression_type))
         }
     }
 
@@ -372,7 +393,7 @@ impl LanguageParser {
             self.source.advance();
         }
 
-        let (lhs_addr, lhs_type) = self.term();
+        let (lhs_addr, lhs_type) = self.term()?;
         if matches!(leading_op, Op::Sub) {
             // Insert a -1
             let negator_addr = self
@@ -381,25 +402,25 @@ impl LanguageParser {
             let reverse_sign_addr = self
                 .target
                 .add(Expr::Binary(Op::Mul, negator_addr, lhs_addr));
-            let (rhs_addr, rhs_type) = self.simple_part(reverse_sign_addr, &LangType::Integer);
+            let (rhs_addr, rhs_type) = self.simple_part(reverse_sign_addr, &LangType::Integer)?;
             if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
-                (rhs_addr, LangType::Float)
+                Ok((rhs_addr, LangType::Float))
             } else {
-                (rhs_addr, LangType::Integer)
+                Ok((rhs_addr, LangType::Integer))
             }
         } else {
-            let (rhs_addr, rhs_type) = self.simple_part(lhs_addr, &lhs_type);
+            let (rhs_addr, rhs_type) = self.simple_part(lhs_addr, &lhs_type)?;
             let simple_part_type = LangType::type_of_expression_parts(&lhs_type, &rhs_type);
-            (rhs_addr, simple_part_type)
+            Ok((rhs_addr, simple_part_type))
         }
     }
 
     fn term(&mut self) -> CompileResult {
-        let (lhs_addr, lhs_type) = self.factor();
+        let (lhs_addr, lhs_type) = self.factor()?;
         // Multiply by the term part
-        let (rhs_addr, rhs_type) = self.term_part(lhs_addr, &lhs_type);
+        let (rhs_addr, rhs_type) = self.term_part(lhs_addr, &lhs_type)?;
         let term_type = LangType::type_of_expression_parts(&lhs_type, &rhs_type);
-        (rhs_addr, term_type)
+        Ok((rhs_addr, term_type))
     }
 
     fn term_part(&mut self, lhs_addr: ExprRef, last_factor_type: &LangType) -> CompileResult {
@@ -413,13 +434,13 @@ impl LanguageParser {
             self.source.advance();
 
             // Parse the right-hand side and get the type of the argument to 'op'
-            let (rhs_addr, rhs_type) = self.factor();
+            let (rhs_addr, rhs_type) = self.factor()?;
             let mul_op_addr = self.target.add_with_type(
                 Expr::Binary(op.clone(), lhs_addr, rhs_addr),
                 &LangType::type_of_expression_parts(&last_factor_type, &rhs_type),
             );
 
-            let (next_part_addr, next_part_type) = self.term_part(mul_op_addr, &rhs_type);
+            let (next_part_addr, next_part_type) = self.term_part(mul_op_addr, &rhs_type)?;
 
             // Mul or Div can only be done on scalars:
             if !LangType::both_scalar(&next_part_type, &rhs_type) {
@@ -431,12 +452,12 @@ impl LanguageParser {
                 std::process::exit(1);
             }
             if matches!(rhs_type, LangType::Float) || matches!(next_part_type, LangType::Float) {
-                (next_part_addr, LangType::Float)
+                Ok((next_part_addr, LangType::Float))
             } else {
-                (next_part_addr, LangType::Integer)
+                Ok((next_part_addr, LangType::Integer))
             }
         } else {
-            (lhs_addr, last_factor_type.clone())
+            Ok((lhs_addr, last_factor_type.clone()))
         }
     }
 
@@ -445,23 +466,24 @@ impl LanguageParser {
         if look_ahead.is_add_op() {
             if let TokenValue::Operator(ref op) = look_ahead.value() {
                 self.source.advance();
-                let (rhs_addr, rhs_type) = self.term();
+                let (rhs_addr, rhs_type) = self.term()?;
                 let last_part_type = LangType::type_of_expression_parts(last_lhs_type, &rhs_type);
                 let term_addr = self.target.add_with_type(
                     Expr::Binary(op.clone(), lhs_addr, rhs_addr),
                     &last_part_type,
                 );
 
-                let (next_part_addr, next_part_type) = self.simple_part(term_addr, &last_part_type);
+                let (next_part_addr, next_part_type) =
+                    self.simple_part(term_addr, &last_part_type)?;
                 let simple_part_type =
                     LangType::type_of_expression_parts(&next_part_type, &rhs_type);
-                (next_part_addr, simple_part_type)
+                Ok((next_part_addr, simple_part_type))
             } else {
                 panic!("Internal parser error.");
             }
         } else {
             // No more parts to the expression, preserve type
-            (lhs_addr, last_lhs_type.clone())
+            Ok((lhs_addr, last_lhs_type.clone()))
         }
     }
 
@@ -474,28 +496,28 @@ impl LanguageParser {
                     .target
                     .add_with_type(Expr::LiteralFloat(*f), &LangType::Float);
                 self.source.advance();
-                (expr_addr, LangType::Float)
+                Ok((expr_addr, LangType::Float))
             }
             TokenValue::Integer(i) => {
                 let expr_addr = self
                     .target
                     .add_with_type(Expr::LiteralInt(*i), &LangType::Integer);
                 self.source.advance();
-                (expr_addr, LangType::Integer)
+                Ok((expr_addr, LangType::Integer))
             }
             TokenValue::Str(s) => {
                 let expr_addr = self
                     .target
                     .add_with_type(Expr::LiteralString(s.clone()), &LangType::String);
                 self.source.advance();
-                (expr_addr, LangType::String)
+                Ok((expr_addr, LangType::String))
             }
             TokenValue::Bool(b) => {
                 let expr_addr = self
                     .target
                     .add_with_type(Expr::LiteralBool(*b), &LangType::Boolean);
                 self.source.advance();
-                (expr_addr, LangType::Boolean)
+                Ok((expr_addr, LangType::Boolean))
             }
             TokenValue::Ident(name) => {
                 let ste = self.symbols.get(self.current_frame, name).clone();
@@ -505,7 +527,7 @@ impl LanguageParser {
                         .target
                         .add_with_type(Expr::Call(*value_storage), &declared_type);
                     self.source.advance();
-                    (*value_storage, declared_type)
+                    Ok((*value_storage, declared_type))
                 } else {
                     let msg = format!("Undeclared identifier '{}'", name);
                     self.print_error(&msg, &look_ahead);
@@ -514,9 +536,9 @@ impl LanguageParser {
             }
             TokenValue::LeftParen => {
                 self.source.advance();
-                let (expression_addr, expression_type) = self.logical_expression();
+                let (expression_addr, expression_type) = self.logical_expression()?;
                 if self.source.matches(&[TokenValue::RightParen]) {
-                    (expression_addr, expression_type)
+                    Ok((expression_addr, expression_type))
                 } else {
                     self.print_error("Expected ')'", &look_ahead);
                     std::process::exit(1);
@@ -536,6 +558,43 @@ impl LanguageParser {
         result
     }
 } // impl
+
+#[derive(Debug, Clone)]
+pub enum CompilerError {
+    Syntax(String, TokenLocation),
+    Type(String, TokenLocation),
+    UnknownIdentifier(String, TokenLocation),
+}
+
+impl fmt::Display for CompilerError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use CompilerError::*;
+
+        match self {
+            Syntax(err, loc) => write!(f, "Syntax error at {}, {}: {}", loc.column, loc.line, err),
+            Type(err, loc) => write!(f, "Type error at {}, {}: {}", loc.column, loc.line, err),
+            UnknownIdentifier(err, loc) => write!(
+                f,
+                "Unknown identifier at {}, {}: {}",
+                loc.column, loc.line, err
+            ),
+        }
+    }
+}
+
+pub fn syntax_error(msg: &str, loc: &TokenLocation) -> CompilerError {
+    CompilerError::Syntax(msg.to_string(), loc.clone())
+}
+
+pub fn type_error(msg: &str, loc: &TokenLocation) -> CompilerError {
+    CompilerError::Type(msg.to_string(), loc.clone())
+}
+
+pub fn unknown_identifier_error(msg: &str, loc: &TokenLocation) -> CompilerError {
+    CompilerError::UnknownIdentifier(msg.to_string(), loc.clone())
+}
+
+impl std::error::Error for CompilerError {}
 
 #[cfg(test)]
 mod test {
@@ -656,10 +715,13 @@ mod test {
         let expr_pool = language_parser.parse_program();
 
         // TODO Put in real error handling
-        if let Some(output) = expr_pool {
-            Ok(output)
-        } else {
-            Err(format!("No results from parsing. Check STDERR."))
+        match expr_pool {
+            Ok(output) => Ok(output),
+            Err(e) => Err(e
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<String>>()
+                .join("\n")),
         }
     }
 }

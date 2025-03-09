@@ -9,7 +9,7 @@ use std::fmt;
 
 pub type CompileResult = Result<(ExprRef, LangType), CompilerError>;
 
-const PARSER_DEBUG: bool = false;
+const PARSER_DEBUG: bool = true;
 
 // Translates from source to target
 pub struct LanguageParser {

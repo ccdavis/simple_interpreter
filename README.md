@@ -14,7 +14,7 @@ The goal for now is to make a language and interpreter sufficient to write and t
 
 Unlike a classic byte code virtual machine, the interpreter takes expressions of the language directly and treats them as bytecode at a somewhat higher level than a typical vm would. Nevertheless one could consider these expressions as a byte code.  See the `expression` module.
 
-The vm loops through a vector of expressions in order left to right, rather than navigating them semantically top-down as a tree. That ought to improve cache locality for better performance. If we show that interpretation strategy produces correct program execution, we could confidently make a simple translator from the expressions to WASM or even assembly. The expressions contain all the necessary information to generate labels for flow-control.
+The vm loops through a vector of expressions in order left to right, rather than navigating them semantically top-down as a tree. That ought to improve cache locality for better performance. If we show this interpretation strategy produces correct program execution, we could confidently make a simple translator from the expressions to WASM or even assembly. The expressions contain all the necessary information to generate labels for flow-control.
 
 I put in some effort to ensure all varients  of the `Expr` type require no more than8 bytes. I could probably get that lower with better use of side tables for types and references to lists.
 

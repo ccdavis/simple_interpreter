@@ -3,7 +3,7 @@ use super::token::{CompareOp, LogicalOp, Op};
 
 use std::fmt;
 
-const DEBUG: bool = true;
+const DEBUG: bool = false;
 
 #[derive(Clone)]
 pub enum Value {
@@ -160,7 +160,12 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
         instruction_counter += 1;
         let expr = &pool.exprs[i];
         if DEBUG {
-            println!("{}:  Execute {:?}", i, &expr);
+            println!("{}:  Execute {:?}", i, &expr);            
+            pool.debug_dump();
+            println!(" ********************************************");
+            for (ind, s) in state.iter().enumerate() {
+                println!("{}\t{}",ind, s);
+            }
         }
         let result = match expr {
             Expr::Unit => Value::None,
@@ -209,14 +214,14 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                     }
                     LogicalOp::And => {
                         if let Value::Bool(l) = &state[lhs.0 as usize] {
-                            if !*l {
-                                // Skip the right hand side of the 'and'
-                                i = rhs.0 as usize;
-                                Value::Bool(false)
+                            if *l {                                                                
+                                // Still need to check if rhs is also true.
+                                // move past the 'and'  op expr address and restart evaluation.
+                                i += 1;
+                                continue;
                             } else {
-                                // Evaluate right hand side:
-                                //i = i + 1;
-                                Value::Bool(true)
+                                i = rhs.0 as usize;                               
+                                Value::Bool(false)
                             }
                         } else {
                             // Runtime error

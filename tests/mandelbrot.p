@@ -16,10 +16,15 @@ let width := right - left;
 let x_increment := width / x_resolution;
 let y_increment :=  height / y_resolution;
 
+output "Begin looping";
+
 for (left < right) {
+	output "In first loop.";
     let line := "";
+output "Declared line.";
 
     for (top < bottom) {
+	output "in second loop.";
 
         let in_mandelbrot := false;
         let iterations := 0;

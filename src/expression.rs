@@ -2,6 +2,8 @@ use super::debug;
 use super::token::{CompareOp, LogicalOp, Op, Token};
 use super::types::LangType;
 
+const EXPR_DEBUG: bool = true;
+
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Binary(Op, ExprRef, ExprRef),
@@ -75,19 +77,24 @@ impl ExpressionPool {
     /// Add an expression to the pool and get a reference to it.
     pub fn add(&mut self, expr: Expr) -> ExprRef {
         let idx = self.exprs.len();
-        self.exprs.push(expr);
+        self.exprs.push(expr.clone());
         self.types.push(LangType::Unresolved);
-        ExprRef(idx.try_into().expect("too many exprs in the pool"))
+        let addr = ExprRef(idx.try_into().expect("too many exprs in the pool"));
+        if EXPR_DEBUG { println!("Add {}  {:?}",addr.0,&expr)}
+        addr
     }
 
     pub fn add_with_type(&mut self, expr: Expr, expr_type: &LangType) -> ExprRef {
         let idx = self.exprs.len();
-        self.exprs.push(expr);
+        self.exprs.push(expr.clone());
         self.types.push(expr_type.clone());
-        ExprRef(idx.try_into().expect("too many exprs in the pool"))
+        let addr = ExprRef(idx.try_into().expect("too many exprs in the pool"));
+        if EXPR_DEBUG { println!("Add {}  {:?}",addr.0,&expr);}
+        addr
     }
 
     pub fn update(&mut self, expr_ref: ExprRef, expr: Expr) {
+        if EXPR_DEBUG { println!("Update {}  {:?}",expr_ref.0,&expr)}
         self.exprs[expr_ref.0 as usize] = expr
     }
 

@@ -80,7 +80,9 @@ impl ExpressionPool {
         self.exprs.push(expr.clone());
         self.types.push(LangType::Unresolved);
         let addr = ExprRef(idx.try_into().expect("too many exprs in the pool"));
-        if EXPR_DEBUG { println!("Add {}  {:?}",addr.0,&expr)}
+        if EXPR_DEBUG {
+            println!("Add {}  {:?}", addr.0, &expr)
+        }
         addr
     }
 
@@ -89,12 +91,16 @@ impl ExpressionPool {
         self.exprs.push(expr.clone());
         self.types.push(expr_type.clone());
         let addr = ExprRef(idx.try_into().expect("too many exprs in the pool"));
-        if EXPR_DEBUG { println!("Add {}  {:?}",addr.0,&expr);}
+        if EXPR_DEBUG {
+            println!("Add {}  {:?}", addr.0, &expr);
+        }
         addr
     }
 
     pub fn update(&mut self, expr_ref: ExprRef, expr: Expr) {
-        if EXPR_DEBUG { println!("Update {}  {:?}",expr_ref.0,&expr)}
+        if EXPR_DEBUG {
+            println!("Update {}  {:?}", expr_ref.0, &expr)
+        }
         self.exprs[expr_ref.0 as usize] = expr
     }
 

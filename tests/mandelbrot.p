@@ -1,5 +1,5 @@
-let y_resolution := 1600;
-let x_resolution := 1600;
+let y_resolution := 120;
+let x_resolution := 100;
 
 let max_iterations := 50;
 let escape_radius := 2.0;
@@ -19,12 +19,8 @@ let y_increment :=  height / y_resolution;
 output "Begin looping";
 
 for (left < right) {
-	output "In first loop.";
     let line := "";
-output "Declared line.";
-
     for (top < bottom) {
-	output "in second loop.";
 
         let in_mandelbrot := false;
         let iterations := 0;
@@ -33,9 +29,9 @@ output "Declared line.";
         let zn_iy := 0.0;
         let tmp_zx := 0.0;
 
-        let not_escaped := true;
+        let not_escaped := false;
         if ((zn_x*zn_x + zn_iy*zn_iy) < 2.0 *escape_radius) {
-            not_escaped := false
+            not_escaped := true;
         };
         for (iterations< max_iterations and not_escaped) {
             if (not_escaped) {
@@ -46,7 +42,7 @@ output "Declared line.";
             };
 
 	        if ((zn_x*zn_x + zn_iy*zn_iy) < 2.0 *escape_radius) {
-                not_escaped := false
+                not_escaped := true
             }                        
         };
         if (not_escaped) {
@@ -56,7 +52,7 @@ output "Declared line.";
         };
         top := top + y_increment
     };
-    output line;
+    output line
 };
 output "Complete!"
 	

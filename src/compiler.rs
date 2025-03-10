@@ -422,7 +422,11 @@ impl LanguageParser {
             let reverse_sign_addr = self
                 .target
                 .add(Expr::Binary(Op::Mul, negator_addr, lhs_addr));
+            if PARSER_DEBUG {
+                println!("Added negation term.");
+            }
             let (rhs_addr, rhs_type) = self.simple_part(reverse_sign_addr, &LangType::Integer)?;
+
             if matches!(rhs_type, LangType::Float) || matches!(lhs_type, LangType::Float) {
                 Ok((rhs_addr, LangType::Float))
             } else {

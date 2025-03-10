@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct SymbolTable(Vec<HashMap<String, ExprRef>>);
+const SYM_DEBUG: bool = true;
 
 impl SymbolTable {
     pub fn current_frame(&self) -> usize {
@@ -20,9 +21,12 @@ impl SymbolTable {
         if self.0.len() <= frame {
             // This should never happen in a properly designed parser.
             panic!(
-                "Stack frame not created. Internal error adding {} on frame {}",
+                "Symbol scope not created. Internal error adding {} on frame {}",
                 name, frame
             );
+        }
+        if SYM_DEBUG {
+            println!("Symbol '{}' assigned '{:?}'", name, value);
         }
         self.0[frame].insert(name.to_string(), value);
     }

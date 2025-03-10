@@ -142,6 +142,9 @@ impl Value {
 
 #[inline(always)]
 pub fn skip_statements(pool: &ExpressionPool, expr_ref: &ExprRef) -> usize {
+    if expr_ref.0 == 0 {
+        panic!("Internal error. statement list address can't be 0.");
+    }
     match &pool.exprs[expr_ref.0 as usize] {
         Expr::StmtList(_head, ref tail) => tail.0 as usize,
         _ => panic!("Internal error: Can't skip any expression other than a statement-list."),
@@ -153,18 +156,27 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
     let mut state: Vec<Value> = vec![Value::None; pool.size()];
     let mut stack = vec![(0 as usize, 0 as usize); 100];
     let mut sp = 0 as usize;
+    if DEBUG {
+        pool.debug_dump();
+    }
 
     //for (i, expr) in pool.exprs.iter().enumerate() {
     let mut i: usize = 0;
     loop {
+        // If jumping past the end of a statement list and that list
+        // happens to be the last thing in the program.
+        if i >= pool.size() {
+            break;
+        }
         instruction_counter += 1;
         let expr = &pool.exprs[i];
         if DEBUG {
-            println!("{}:  Execute {:?}", i, &expr);            
-            pool.debug_dump();
+            println!("Execute {}: {:?}", i, &expr);
             println!(" ********************************************");
             for (ind, s) in state.iter().enumerate() {
-                println!("{}\t{}",ind, s);
+                if ind <= i {
+                    println!("{}\t{}", ind, s);
+                }
             }
         }
         let result = match expr {
@@ -214,13 +226,13 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                     }
                     LogicalOp::And => {
                         if let Value::Bool(l) = &state[lhs.0 as usize] {
-                            if *l {                                                                
+                            if *l {
                                 // Still need to check if rhs is also true.
                                 // move past the 'and'  op expr address and restart evaluation.
                                 i += 1;
                                 continue;
                             } else {
-                                i = rhs.0 as usize;                               
+                                i = rhs.0 as usize;
                                 Value::Bool(false)
                             }
                         } else {
@@ -280,6 +292,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                         } else {
                             // Jump past the loop's statements
                             i = skip_statements(pool, loop_addr);
+                            i = i + 1;
                             if DEBUG {
                                 println!("Finished withfor loop, skip to {}", i);
                             }
@@ -316,7 +329,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
         };
         state[i] = result;
         if DEBUG {
-            println!("{}: value: {}", i, &state[i]);
+            println!("Value @{}: {}", i, &state[i]);
         }
 
         // Did we reach the end of the current scope? The .1 part of the stack frame tuple has the 'finish' address.

@@ -367,6 +367,7 @@ mod test {
     use super::super::expression::ExprRef;
     use super::super::expression::ExpressionPool;
     use super::super::interpreter::*;
+    use super::super::lex::Scanner;
     use super::super::token::*;
     use super::super::types::LangType;
     use super::super::LanguageParser;
@@ -436,6 +437,40 @@ mod test {
         };
         let result = run(&ir, ExprRef(0));
         assert_eq!("8", &format!("{}", result));
+    }
+
+    #[test]
+    fn test_nested_for_loop() {
+        let code = "let x := 1; let y := 1; let outer := 0; let inner := 0;
+            for (x < 5) {
+                outer := outer + 1;
+                for (y < 10) {
+                    inner :=inner + 1;
+                    y := y + 1;
+                };
+                x := x + 1
+            };
+            let final := inner + outer;            
+            output final
+            ";
+
+        let mut scanner = Scanner::new(&code);
+        let tokens = scanner.tokenize();
+        let mut language_parser = LanguageParser::new(tokens);
+        let ir_pool = language_parser.parse_program();
+        match ir_pool {
+            Err(errors) => {
+                for e in errors {
+                    eprintln!("{}", e);
+                }
+            }
+            Ok(ir) => {
+                // Interpret the intermediate representation.
+                let value = super::super::interpreter::run(&ir, ExprRef(0));
+                println!("Final value: {}", &value);
+                assert!(matches!(value, Value::Int(13)));
+            }
+        }
     }
 
     #[test]
@@ -540,7 +575,6 @@ mod test {
         assert_eq!("0", &result.to_string());
     }
 
-    use super::super::lex::Scanner;
     #[test]
     fn test_parse_and_interpret() {
         let program = "let a := 2;\n let result := 12;\n a := a + 1; if (a = 2){ result := 99} else {result := 0}; output result";

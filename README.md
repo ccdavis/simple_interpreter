@@ -54,7 +54,7 @@ Each function the compiler emits will return  an offset from its current instruc
 
 The functions take the VM as an argument and their other arguments will carry the specific data needed for their work.   Normally the function will return 1, which will increment the VM's instruction pointer by 1, and it calls the function at that index in the instructions and the interpretation continues.
 
-Implementing this technique highly depends on the  language being used -- it may be nearly impossible in plain C. In Rust I think you'd use boxed closures. 
+How you implement this technique highly depends on the  language being used -- it may be nearly impossible in plain C. In Rust I think you'd use boxed closures. 
 
 I've seen this before, or some variation of it anyhow. Here <a href="https://planetscale.com/blog/faster-interpreters-in-go-catching-up-with-cpp"> Faster Interpreters in Go </a> explains it pretty well with  performance test results. They point out there's a 20% overhead on these "instruction" functions. I'm not sure how similar a Rust implementation using boxed fn would be, but probably similar. It might turn out that just doing specialized operations would be faster for some types of work.
 

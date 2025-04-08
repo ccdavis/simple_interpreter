@@ -40,7 +40,7 @@ for (left < right) {
         let tmp_zx := 0.0;
 
         let not_escaped := true;
-        for (not_escaped and iterations < max_iterations) {
+        for (not_escaped and (iterations < max_iterations)) {
                 tmp_zx := left + (zn_x * zn_x - zn_iy * zn_iy);
                 zn_iy := bottom + 2.0 * zn_x * zn_iy;
                 zn_x := tmp_zx;

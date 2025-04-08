@@ -473,6 +473,77 @@ mod test {
         }
     }
 
+
+    #[test]
+    pub fn test_more_logical_and() {
+        let code = "let x := 1; let y := 1; let outer := 0; let inner := 0;
+            for (x < 5) {
+                outer := outer + 1;
+                for (y < 10) {
+                    inner :=inner + 1;
+                    y := y + 1;
+                };
+                x := x + 1
+            };
+            let final := inner + outer;            
+            output final
+            ";
+
+        let mut scanner = Scanner::new(&code);
+        let tokens = scanner.tokenize();
+        let mut language_parser = LanguageParser::new(tokens);
+        let ir_pool = language_parser.parse_program();
+        match ir_pool {
+            Err(errors) => {
+                for e in errors {
+                    eprintln!("{}", e);
+                }
+            }
+            Ok(ir) => {
+                // Interpret the intermediate representation.
+                let value = super::super::interpreter::run(&ir, ExprRef(0));
+                println!("Final value: {}", &value);
+                assert!(matches!(value, Value::Int(13)));
+            }
+        }let code = "let x := 1; let y := 1; 
+        let first_and := false;
+        if (x >  0 and y > 0) {
+            first_and := true;
+        };
+        let second_and := false;
+        if (x > 1 and y>1) {
+            second_and :=false;
+        };
+
+        for (first_and and x < 25 ) {
+            x := x + 1;
+        };
+        output x
+
+        
+        ";
+
+    let mut scanner = Scanner::new(&code);
+    let tokens = scanner.tokenize();
+    let mut language_parser = LanguageParser::new(tokens);
+    let ir_pool = language_parser.parse_program();
+    match ir_pool {
+        Err(ref errors) => {
+            for e in errors {
+                eprintln!("{}", e);
+            }
+        }
+        Ok(ref ir) => {
+            // Interpret the intermediate representation.
+            let value = super::super::interpreter::run(ir, ExprRef(0));
+            println!("Final value: {}", &value);
+            assert!(matches!(value, Value::Int(13)));
+        }    
+    }
+    assert!(ir_pool.is_ok());
+
+    }
+
     #[test]
     fn test_logical_and_op() {
         println!("test logical AND op ---------------------------------------");

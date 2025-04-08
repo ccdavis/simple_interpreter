@@ -306,8 +306,10 @@ impl LanguageParser {
                 let (rhs_addr, rhs_expression_type) = self.expression()?;
                 if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
                     let message = format!(
-                        "Can't compare arguments to '{}', must be boolean types.",
-                        look_ahead.value()
+                        "Can't compare arguments to '{}', must be boolean types. LHS type: {}, RHS type {}",
+                        look_ahead.value(),
+                        &expression_type,
+                        &rhs_expression_type
                     );
                     self.print_error(&message, &look_ahead);
                     std::process::exit(1);
@@ -342,8 +344,8 @@ impl LanguageParser {
                 let (rhs_addr, rhs_expression_type) = self.simple_expression()?;
                 if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
                     let message = format!(
-                        "Can't compare arguments to '{}', must be boolean types.",
-                        look_ahead.value()
+                        "Can't compare arguments to 'or', must be boolean types. LHS type: {}, RHS type: {}",
+                        &expression_type, &rhs_expression_type                        
                     );
                     self.print_error(&message, &look_ahead);
                     std::process::exit(1);
@@ -363,8 +365,10 @@ impl LanguageParser {
                 let (rhs_addr, rhs_expression_type) = self.simple_expression()?;
                 if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
                     let message = format!(
-                        "Can't compare arguments to '{}', must be boolean types.",
-                        look_ahead.value()
+                        "Can't compare arguments to '{}', must be boolean types. LHS type: {}, RHS type: {}.",
+                        look_ahead.value(),
+                        &expression_type, &rhs_expression_type
+
                     );
                     self.print_error(&message, &look_ahead);
                     std::process::exit(1);

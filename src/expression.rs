@@ -48,7 +48,7 @@ impl ExpressionPool {
         self.exprs.len()
     }
 
-    pub fn default() -> Self {
+    pub fn new() -> Self {
         Self {
             exprs: Vec::with_capacity(100_000),
             types: Vec::with_capacity(100_000),

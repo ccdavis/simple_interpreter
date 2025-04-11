@@ -42,8 +42,7 @@ impl ParserState {
     }
 
     pub fn peek(&self) -> &Token {
-        &self
-            .tokens
+        self.tokens
             .get(self.current)
             .expect("Expected an EOF token before reaching the end of the token list.")
     }

@@ -52,7 +52,7 @@ pub enum TokenValue {
     Eof,
 }
 
-static RESERVED_WORDS: &'static [TokenValue] = &[
+static RESERVED_WORDS: &[TokenValue] = &[
     TokenValue::Output,
     TokenValue::Input,
     TokenValue::If,

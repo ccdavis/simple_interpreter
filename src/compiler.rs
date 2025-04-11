@@ -42,7 +42,7 @@ impl LanguageParser {
     pub fn new(code: Vec<Token>) -> Self {
         Self {
             source: ParserState::new(code),
-            target: ExpressionPool::default(),
+            target: ExpressionPool::new(),
             symbols: SymbolTable::default(),
             current_frame: 0,
             errors: Vec::new(),
@@ -150,16 +150,14 @@ impl LanguageParser {
     fn assign_stmt(&mut self, identifier: &str, id_token: &Token) -> CompileResult {
         self.source.consume(&TokenValue::Assign);
         let (variable_value, variable_type) = self.logical_expression()?;
-        let ste = self.symbols.get(self.current_frame, identifier).clone();
+        let ste = self.symbols.get(self.current_frame, identifier);
         if let Some(symbol) = ste {
             let rhs_type = self.target.get_type(*symbol);
             if !variable_type.same_as(&rhs_type) {
                 self.print_error("Type mismatch in assignment.", id_token);
                 std::process::exit(1);
             }
-            let assign_addr = self
-                .target
-                .add(Expr::Assign(symbol.clone(), variable_value));
+            let assign_addr = self.target.add(Expr::Assign(*symbol, variable_value));
             Ok((assign_addr, rhs_type))
         } else {
             let msg = format!("Unknown identifier: '{}'", identifier);
@@ -289,7 +287,8 @@ impl LanguageParser {
                         look_ahead.value()
                     );
                     self.print_error(&message, &look_ahead);
-                    std::process::exit(1);
+                    let error = CompilerError::Type(message, look_ahead.location().clone());
+                    return CompileResult::Err(error);
                 };
 
                 self.target.add_with_type(
@@ -312,7 +311,8 @@ impl LanguageParser {
                         &rhs_expression_type
                     );
                     self.print_error(&message, &look_ahead);
-                    std::process::exit(1);
+                    let error = CompilerError::Type(message, look_ahead.location().clone());
+                    return CompileResult::Err(error);
                 };
                 self.target.update(
                     this_address,
@@ -348,7 +348,8 @@ impl LanguageParser {
                         &expression_type, &rhs_expression_type                        
                     );
                     self.print_error(&message, &look_ahead);
-                    std::process::exit(1);
+                    let error = CompilerError::Type(message, look_ahead.location().clone());
+                    return CompileResult::Err(error);
                 };
 
                 self.target.add_with_type(
@@ -371,7 +372,8 @@ impl LanguageParser {
 
                     );
                     self.print_error(&message, &look_ahead);
-                    std::process::exit(1);
+                    let error = CompilerError::Type(message, look_ahead.location().clone());
+                    return CompileResult::Err(error);
                 };
                 self.target.update(
                     this_address,
@@ -465,7 +467,7 @@ impl LanguageParser {
             let (rhs_addr, rhs_type) = self.factor()?;
             let mul_op_addr = self.target.add_with_type(
                 Expr::Binary(op.clone(), lhs_addr, rhs_addr),
-                &LangType::type_of_expression_parts(&last_factor_type, &rhs_type),
+                &LangType::type_of_expression_parts(last_factor_type, &rhs_type),
             );
 
             let (next_part_addr, next_part_type) = self.term_part(mul_op_addr, &rhs_type)?;
@@ -548,7 +550,7 @@ impl LanguageParser {
                 Ok((expr_addr, LangType::Boolean))
             }
             TokenValue::Ident(name) => {
-                let ste = self.symbols.get(self.current_frame, name).clone();
+                let ste = self.symbols.get(self.current_frame, name);
                 if let Some(value_storage) = ste {
                     let declared_type = self.target.get_type(*value_storage);
                     let _call_addr = self

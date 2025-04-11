@@ -68,15 +68,15 @@ impl LangType {
     // strings can be combined or scalars can be combined, and integers with even one float part
     // become floats.
     pub fn type_of_expression_parts(lhs_type: &Self, rhs_type: &Self) -> Self {
-        if LangType::both_scalar(&lhs_type, &rhs_type) {
+        if LangType::both_scalar(lhs_type, rhs_type) {
             if matches!(lhs_type, LangType::Float) || matches!(rhs_type, LangType::Float) {
                 LangType::Float
             } else {
                 LangType::Integer
             }
-        } else if LangType::both_string(&lhs_type, &rhs_type) {
+        } else if LangType::both_string(lhs_type, rhs_type) {
             LangType::String
-        } else if LangType::both_boolean(&lhs_type, &rhs_type) {
+        } else if LangType::both_boolean(lhs_type, rhs_type) {
             LangType::Boolean
         } else {
             panic!(

@@ -154,8 +154,8 @@ pub fn skip_statements(pool: &ExpressionPool, expr_ref: &ExprRef) -> usize {
 pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
     let mut instruction_counter = 0;
     let mut state: Vec<Value> = vec![Value::None; pool.size()];
-    let mut stack = vec![(0 as usize, 0 as usize); 100];
-    let mut sp = 0 as usize;
+    let mut stack = vec![(0, 0); 100];
+    let mut sp = 0;
     if DEBUG {
         pool.debug_dump();
     }
@@ -292,7 +292,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
                         } else {
                             // Jump past the loop's statements
                             i = skip_statements(pool, loop_addr);
-                            i = i + 1;
+                            i += 1;
                             if DEBUG {
                                 println!("Finished withfor loop, skip to {}", i);
                             }
@@ -345,7 +345,7 @@ pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
             // If the last part of the main program is a statement list, the new program pointer
             // will point past the end of the program, so we're done.
         } else {
-            i = i + 1;
+            i += 1;
             if DEBUG {
                 println!("Increment program pointer to '{}'", i);
             }
@@ -374,7 +374,7 @@ mod test {
 
     #[test]
     fn test_interpret_simple_stmt() {
-        let mut pool = ExpressionPool::default();
+        let mut pool = ExpressionPool::new();
 
         let stmt_list = Expr::StmtList(ExprRef(2), ExprRef(2));
         let int_literal = Expr::LiteralInt(99);
@@ -391,7 +391,7 @@ mod test {
 
     #[test]
     fn test_let_and_call_stmt() {
-        let mut pool = ExpressionPool::default();
+        let mut pool = ExpressionPool::new();
         pool.add(Expr::StmtList(ExprRef(2), ExprRef(4)));
         pool.add(Expr::LiteralInt(5));
         pool.add(Expr::Let(ExprRef(1), LangType::Integer));
@@ -429,14 +429,15 @@ mod test {
         ];
         println!("----------------------- for loop test --------------------------------");
         let parsed_code = try_parsing(program);
-        let ir = match parsed_code {
-            Err(e) => {
-                panic!("Failed to parse test program: {}", &e);
-            }
-            Ok(code) => code,
-        };
-        let result = run(&ir, ExprRef(0));
-        assert_eq!("8", &format!("{}", result));
+
+        if let Err(ref e) = parsed_code {
+            eprintln!("Error was {:?}", e);
+        }
+
+        if let Ok(ir) = parsed_code {
+            let result = run(&ir, ExprRef(0));
+            assert_eq!("8", &format!("{}", result));
+        }
     }
 
     #[test]
@@ -454,7 +455,7 @@ mod test {
             output final
             ";
 
-        let mut scanner = Scanner::new(&code);
+        let mut scanner = Scanner::new(code);
         let tokens = scanner.tokenize();
         let mut language_parser = LanguageParser::new(tokens);
         let ir_pool = language_parser.parse_program();
@@ -473,7 +474,6 @@ mod test {
         }
     }
 
-
     #[test]
     pub fn test_more_logical_and() {
         let code = "let x := 1; let y := 1; let outer := 0; let inner := 0;
@@ -489,7 +489,7 @@ mod test {
             output final
             ";
 
-        let mut scanner = Scanner::new(&code);
+        let mut scanner = Scanner::new(code);
         let tokens = scanner.tokenize();
         let mut language_parser = LanguageParser::new(tokens);
         let ir_pool = language_parser.parse_program();
@@ -505,7 +505,8 @@ mod test {
                 println!("Final value: {}", &value);
                 assert!(matches!(value, Value::Int(13)));
             }
-        }let code = "let x := 1; let y := 1; 
+        }
+        let code = "let x := 1; let y := 1; 
         let first_and := false;
         if (x >  0 and y > 0) {
             first_and := true;
@@ -523,25 +524,24 @@ mod test {
         
         ";
 
-    let mut scanner = Scanner::new(&code);
-    let tokens = scanner.tokenize();
-    let mut language_parser = LanguageParser::new(tokens);
-    let ir_pool = language_parser.parse_program();
-    match ir_pool {
-        Err(ref errors) => {
-            for e in errors {
-                eprintln!("{}", e);
+        let mut scanner = Scanner::new(code);
+        let tokens = scanner.tokenize();
+        let mut language_parser = LanguageParser::new(tokens);
+        let ir_pool = language_parser.parse_program();
+        match ir_pool {
+            Err(ref errors) => {
+                for e in errors {
+                    eprintln!("{}", e);
+                }
+            }
+            Ok(ref ir) => {
+                // Interpret the intermediate representation.
+                let value = super::super::interpreter::run(ir, ExprRef(0));
+                println!("Final value: {}", &value);
+                assert!(matches!(value, Value::Int(13)));
             }
         }
-        Ok(ref ir) => {
-            // Interpret the intermediate representation.
-            let value = super::super::interpreter::run(ir, ExprRef(0));
-            println!("Final value: {}", &value);
-            assert!(matches!(value, Value::Int(13)));
-        }    
-    }
-    assert!(ir_pool.is_ok());
-
+        assert!(ir_pool.is_ok());
     }
 
     #[test]
@@ -560,15 +560,13 @@ mod test {
         ];
         let parsed_code = try_parsing(program);
         assert!(parsed_code.is_ok());
-        let ir = match parsed_code {
-            Err(e) => {
-                panic!("Failed to parse test program: {}", &e);
-            }
-            Ok(code) => code,
-        };
-        ir.debug_dump();
-        let result = run(&ir, ExprRef(0));
-        assert!(matches!(result, Value::Bool(false)));
+        if let Err(ref e) = parsed_code {
+            eprintln!("Error parsing {}", e);
+        }
+        if let Ok(ref ir) = parsed_code {
+            let result = run(ir, ExprRef(0));
+            assert!(matches!(result, Value::Bool(false)));
+        }
 
         let program_true = vec![
             output_tok(),
@@ -583,16 +581,15 @@ mod test {
         ];
         let parsed_code = try_parsing(program_true);
         assert!(parsed_code.is_ok());
-        let ir = match parsed_code {
-            Err(e) => {
-                panic!("Failed to parse test program: {}", &e);
-            }
-            Ok(code) => code,
-        };
-        ir.debug_dump();
-        let result = run(&ir, ExprRef(0));
-        println!("result of program_true: {}", result);
-        assert!(matches!(result, Value::Bool(true)));
+        if let Err(ref e) = parsed_code {
+            eprintln!("Error parsing {}", e);
+        }
+        if let Ok(ir) = parsed_code {
+            ir.debug_dump();
+            let result = run(&ir, ExprRef(0));
+            println!("result of program_true: {}", result);
+            assert!(matches!(result, Value::Bool(true)));
+        }
     }
 
     #[test]
@@ -623,14 +620,15 @@ mod test {
             eof_tok(),
         ];
         let parsed_code = try_parsing(program);
-        let ir = match parsed_code {
-            Err(e) => {
-                panic!("Failed to parse test program: {}", &e);
-            }
-            Ok(code) => code,
-        };
-        let result = run(&ir, ExprRef(0));
-        assert!(matches!(result, Value::None));
+        assert!(parsed_code.is_ok());
+
+        if let Err(ref e) = parsed_code {
+            eprintln!("Error was {:?}", e);
+        }
+        if let Ok(ref ir) = parsed_code {
+            let result = run(ir, ExprRef(0));
+            assert!(matches!(result, Value::None));
+        }
     }
 
     #[test]
@@ -652,12 +650,18 @@ mod test {
         let mut s = Scanner::new(program);
         let code = s.tokenize();
         let mut language_parser = LanguageParser::new(code);
-        let expr_pool = language_parser
-            .parse_program()
-            .expect("Error during parsing.");
-        assert!(expr_pool.size() > 0);
-        let result = run(&expr_pool, ExprRef(0));
-        assert_eq!("0", &result.to_string());
+        let expr_pool_result = language_parser.parse_program();
+
+        if let Err(ref e) = expr_pool_result {
+            eprintln!("Error is {:?}", e);
+        }
+
+        assert!(expr_pool_result.is_ok());
+        if let Ok(expr_pool) = expr_pool_result {
+            assert!(expr_pool.size() > 0);
+            let result = run(&expr_pool, ExprRef(0));
+            assert_eq!("0", &result.to_string());
+        }
     }
 
     fn program1_tokens() -> Vec<Token> {

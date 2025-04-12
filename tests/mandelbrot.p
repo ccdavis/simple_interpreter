@@ -4,7 +4,7 @@ let points := 0.0;
 let y_resolution := 120;
 let x_resolution := 100;
 
-let max_iterations := 50;
+let max_iterations := 1000;
 let escape_radius := 2.0;
 
 
@@ -27,10 +27,10 @@ output "Begin looping";
 
 for (left < right) {
     let line := "";    
-    output "new line";
+    //output "new line";
     for (bottom < top) {
         points := points + 1;
-        output points;
+        //output points;
 
         let in_mandelbrot := false;
         let iterations := 0;
@@ -45,15 +45,15 @@ for (left < right) {
                 zn_iy := bottom + 2.0 * zn_x * zn_iy;
                 zn_x := tmp_zx;
                 iterations := iterations + 1;
-                output "iterations";
-                output iterations;            
+                //output "iterations";
+                //output iterations;            
                 if ((zn_x*zn_x + zn_iy*zn_iy) < 2.0 *escape_radius) {
                     not_escaped := true;
                 } else {
                     not_escaped := false;
                 };                        
-                output "not_escaped";
-                output not_escaped;                        
+                //output "not_escaped";
+                //output not_escaped;                        
         };
         if (iterations = max_iterations and not_escaped) {
             in_mandelbrot := true;

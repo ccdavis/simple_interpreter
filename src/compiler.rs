@@ -9,7 +9,7 @@ use std::fmt;
 
 pub type CompileResult = Result<(ExprRef, LangType), CompilerError>;
 
-const PARSER_DEBUG: bool = true;
+const PARSER_DEBUG: bool = false;
 
 // Translates from source to target
 pub struct LanguageParser {
@@ -280,7 +280,7 @@ impl LanguageParser {
             self.source.advance();
 
             let logical_expr_ref = if matches!(logical_op, LogicalOp::Or) {
-                let (rhs_addr, rhs_expression_type) = self.expression()?;
+                let (rhs_addr, rhs_expression_type) = self.logical_expression()?;
                 if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
                     let message = format!(
                         "Can't compare arguments to '{}', must be boolean types.",
@@ -296,13 +296,15 @@ impl LanguageParser {
                     &LangType::Boolean,
                 )
             } else {
+                if PARSER_DEBUG { println!("** parsing rhs of 'and' expression.");}
                 // Add 'and' before compiling the right-hand side. After compiling
                 // the rhs we can update the expression with the rhs address.
                 let this_address = self.target.add_with_type(
                     Expr::Logical(LogicalOp::And, lhs_addr, ExprRef(0)),
                     &LangType::Boolean,
                 );
-                let (rhs_addr, rhs_expression_type) = self.expression()?;
+
+                let (rhs_addr, rhs_expression_type) = self.logical_expression()?;
                 if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
                     let message = format!(
                         "Can't compare arguments to '{}', must be boolean types. LHS type: {}, RHS type {}",
@@ -332,57 +334,8 @@ impl LanguageParser {
     fn expression(&mut self) -> CompileResult {
         let (lhs_addr, expression_type) = self.simple_expression()?;
         let look_ahead = self.next_token();
-        if let TokenValue::LogicalOperator(logical_op) = look_ahead.value() {
-            if PARSER_DEBUG {
-                println!(
-                    "From expression(), Parsing logical operation {:?}",
-                    &logical_op
-                );
-            }
-            self.source.advance();
-            let logical_expr_ref = if matches!(logical_op, LogicalOp::Or) {
-                let (rhs_addr, rhs_expression_type) = self.simple_expression()?;
-                if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
-                    let message = format!(
-                        "Can't compare arguments to 'or', must be boolean types. LHS type: {}, RHS type: {}",
-                        &expression_type, &rhs_expression_type                        
-                    );
-                    self.print_error(&message, &look_ahead);
-                    let error = CompilerError::Type(message, look_ahead.location().clone());
-                    return CompileResult::Err(error);
-                };
 
-                self.target.add_with_type(
-                    Expr::Logical(LogicalOp::Or, lhs_addr, rhs_addr),
-                    &LangType::Boolean,
-                )
-            } else {
-                // Add 'and' before compiling the right-hand side. After compiling
-                // the rhs we can update the expression with the rhs address.
-                let this_address = self.target.add_with_type(
-                    Expr::Logical(LogicalOp::And, lhs_addr, ExprRef(0)),
-                    &LangType::Boolean,
-                );
-                let (rhs_addr, rhs_expression_type) = self.simple_expression()?;
-                if !LangType::both_boolean(&expression_type, &rhs_expression_type) {
-                    let message = format!(
-                        "Can't compare arguments to '{}', must be boolean types. LHS type: {}, RHS type: {}.",
-                        look_ahead.value(),
-                        &expression_type, &rhs_expression_type
-
-                    );
-                    self.print_error(&message, &look_ahead);
-                    let error = CompilerError::Type(message, look_ahead.location().clone());
-                    return CompileResult::Err(error);
-                };
-                self.target.update(
-                    this_address,
-                    Expr::Logical(LogicalOp::And, lhs_addr, rhs_addr),
-                );
-                this_address
-            };
-            Ok((logical_expr_ref, LangType::Boolean))
-        } else if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
+        if let TokenValue::CompareOperator(bool_op) = look_ahead.value().clone() {
             if PARSER_DEBUG {
                 println!("Parsing compare operation {}", &bool_op);
             }

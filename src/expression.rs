@@ -2,7 +2,7 @@ use super::debug;
 use super::token::{CompareOp, LogicalOp, Op, Token};
 use super::types::LangType;
 
-const EXPR_DEBUG: bool = true;
+const EXPR_DEBUG: bool = false;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Expr {

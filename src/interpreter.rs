@@ -538,7 +538,7 @@ mod test {
                 // Interpret the intermediate representation.
                 let value = super::super::interpreter::run(ir, ExprRef(0));
                 println!("Final value: {}", &value);
-                assert!(matches!(value, Value::Int(13)));
+                assert!(matches!(value, Value::Int(25)));
             }
         }
         assert!(ir_pool.is_ok());

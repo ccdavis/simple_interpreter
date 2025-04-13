@@ -1,10 +1,10 @@
 
 let points := 0.0;
 
-let y_resolution := 120;
-let x_resolution := 100;
+let y_resolution := 1600;
+let x_resolution := 1600;
 
-let max_iterations := 1000;
+let max_iterations := 100;
 let escape_radius := 2.0;
 
 

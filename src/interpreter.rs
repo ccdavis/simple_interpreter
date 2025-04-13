@@ -152,7 +152,7 @@ pub fn skip_statements(pool: &ExpressionPool, expr_ref: &ExprRef) -> usize {
 }
 
 pub fn run(pool: &ExpressionPool, root: ExprRef) -> Value {
-    let mut instruction_counter = 0;
+    let mut instruction_counter: u128 = 0;
     let mut state: Vec<Value> = vec![Value::None; pool.size()];
     let mut stack = vec![(0, 0); 100];
     let mut sp = 0;

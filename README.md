@@ -16,8 +16,6 @@ The goal for now is to make a language and interpreter sufficient to write and t
 * Fully featured language  with data structures or modules
 
 
-### Details and status
-
 ### Interpreter
 
 Unlike a classic byte code virtual machine, this interpreter takes expressions of the language directly (the `Expr` type in the code.) and treats them as bytecode at a somewhat higher level than a typical vm would. Nevertheless one could consider these expressions as a byte code.  See the `expression` module.
@@ -25,6 +23,16 @@ Unlike a classic byte code virtual machine, this interpreter takes expressions o
 The vm loops through a vector of expressions in order left to right, rather than navigating them semantically top-down as a tree. That ought to improve cache locality for better performance. If we show this interpretation strategy produces correct program execution, we could confidently make a simple translator from the expressions to WASM or even assembly. The expressions contain all the necessary information to generate labels for flow-control.
 
 I put in some effort to ensure all varients  of the `Expr` type require no more than8 bytes. I could probably get that lower with better use of side tables for types and references to lists.
+
+###   Performance and profiling
+
+The sample program runs about 12% as fast as an equivalent Python or Ruby program. That's not so bad really -- both Python and Ruby have had a lot of work to improve their  performance in recent versions. It's faster by a lot compared to a tree-walk interpreter I wrote a few years ago.
+
+Once I tested a 1600 x 1600 Mandelbrot image with 100 iterations per point against my language and Ruby and Python, I wanted to profile my interpreter. The Rust `flamegraph` package is a nice and mostly easy way to get flamegraphs working for compiled programs (once you have perf set up properly for your system.)
+
+Unfortunately the Rust compiler is too good. The main `run()` method on the interpreter inlines any function calls it makes. So 99.9% of the time at the top of the graph is just in `run()` and I learned nothing. I should have realized there wasn't much to learn from a flamegraph anyhow, since the run function is mostly a big `match` doing simple work to a `state` vector, and any work it delegates -- which isn't much -- gets inlined.
+
+When I profile an unoptimized binary it shows accesses     on the `state` vec and that's about it -- these get inlined or optimized away in the release version of the binary.
 
 ###  Design improvement ideas
 
@@ -60,8 +68,11 @@ I've seen this before, or some variation of it anyhow. Here <a href="https://pla
 
 Finally, I have to note that aside from likely performance benefits, the function-list technique ought to make maintaining the language as a whole a lot easier. There's basically no separate VM and front end of the interpreter to keep in sync: You add new functionality to the language by having the compiler emit new kinds of functions. The VM is bound to execute them as long as they behave like the other function-instructions.
 
+##### Compile the compiled expressions 
 
-### Parser and Compiler
+Since the `Expr` enums are much like rather high-level  assembly language, one could try to transpile them to a real intermediate representation for a backend like QBE or Cranelift or LLVM. Or, you could make a translation layer to true assembly even. Labeling addresses and managing the stack would be some extra work.
+
+## Parser and Compiler
 
 The parser works its way top-down recursively through the `source` input tokens to terminals in the language's grammar.  It's organized so that each parse function for an expression varient adds an expression to the `target` in order. The parsing order transforms the  hypothetical syntax tree to the flat structure the interpreter needs. 
 
@@ -71,11 +82,13 @@ I needed to compromise  somewhat on the expression type to communicate some lowe
 
 It was hard to entirely avoid having the output of the compiler influenced by the working of the virtual machine. Because I was trying to only emit normal PL expressions I had to contort bits of the interpreter to compensate, and also had to introduce a couple of expressions coming out of the compiler that look more like machine instructions.
 
+There's a hand rolled lexical analyzer to produce the tokens for the parser.
+
 ## The Language
 
 The language currently only has the bare minimum features to write interesting benchmark programs. (Well, I included several data types and an 'output' statement too.) No functions yet, just variables, "for" loops, "if" statements and logical operators and comparison operators and arithmetic.
 
-I've tried to write a naive Mandelbrot set renderer as a first real program to benchmark. No results yet.
+I've written a naive Mandelbrot set renderer as a first real program to benchmark. 
 
 The syntax has some warts I know how to correct, and will at some point.
 
